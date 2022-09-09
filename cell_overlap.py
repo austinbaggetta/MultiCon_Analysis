@@ -16,7 +16,7 @@ def calculate_overlap(mappings):
                'session_id2' : d1, 
                'total' : total, 
                'pairs' : pairs, 
-               'overlap' : np.nan}
+               'overlap' : np.nan} ## sets 100% overlap to NaN to allow for better heatmap visualization
         new = pd.DataFrame(data = tmp, index = [0])
         overlap_summary = pd.concat([overlap_summary, new], ignore_index = True)
     ## Loop through all combinations of sessions

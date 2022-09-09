@@ -49,12 +49,8 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False):
     expected length of the session. For each timeframe in 'time', the closest frame from minian_timestamps is acquired.
     Some frames are used more than once. Returns vector of lined up frames to use to align recording to the time vector.
     """
-    lined_up_timeframes = np.array(
-        [
-            np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin()
-            for t in time
-        ]
-    )
+    arg_mins = [np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin() for t in time]
+    lined_up_timeframes = np.array(minian_timestamps['Frame Number'].values[arg_mins])
 
     if plot_frame_usage:
         duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
@@ -78,7 +74,7 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False):
     return lined_up_timeframes
 
 
-def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1 / 30):
+def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample = True, downsample_factor=2):
     """
     Parameters:
     ==========
@@ -96,6 +92,10 @@ def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neura
         one of ['traces', 'spikes', 'smoothed']
     sigma : int
         smoothing kernel if neural_type=smoothed
+    downsample : boolean
+        if data was downsampled during minian
+    downsample_factor : int
+        factor that minian downsampled data
     """
 
     # create time vector based on expected length of session
@@ -122,6 +122,8 @@ def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neura
         )
     tpath = pjoin(path, 'Data/{}/{}/{}/miniscope'.format(mouse, date, timestamp))
     minian_timestamps = pd.read_csv(tpath + "/timeStamps.csv")
+    if downsample:
+        minian_timestamps = minian_timestamps[::downsample_factor]
     lined_up_timeframes = align_miniscope_frames(minian_timestamps, time)
     neural_activity = neural_activity.sel(frame=lined_up_timeframes)
     if (
