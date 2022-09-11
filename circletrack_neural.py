@@ -15,7 +15,7 @@ import xarray as xr
 from numpy.polynomial.polynomial import polyfit
 from plotly.subplots import make_subplots
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
-from scipy.stats import pearsonr, zscore
+from scipy.stats import pearsonr, zscore, spearmanr
 
 
 def open_minian(dpath, post_process=None, return_dict=False):
@@ -74,7 +74,7 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False):
     return lined_up_timeframes
 
 
-def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample = True, downsample_factor=2):
+def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample = True, downsample_factor=2):
     """
     Parameters:
     ==========
@@ -95,10 +95,9 @@ def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neura
     downsample : boolean
         if data was downsampled during minian
     downsample_factor : int
-        factor that minian downsampled data
+        factor that minian subsampled data
     """
-
-    # create time vector based on expected length of session
+    # Create time vector based on expected length of session
     if "20min" in session:
         frame_count = (
             20 * 60 / sampling_rate
@@ -108,10 +107,12 @@ def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neura
             "Invalid 'session' argument. Must be one of: ['20min']"
         )
     time = np.arange(0, frame_count * sampling_rate, sampling_rate)
-
     # load the specified type of neural activity
-    rpath = pjoin(path, 'Results/{}/{}/{}/minian'.format(mouse, date, timestamp))
-    mouse_minian = open_minian(rpath, return_dict=True)
+    rpath = pjoin(path, 'Results/{}/{}/'.format(mouse, date))
+    timestamp = os.listdir(rpath) ## get timestamp associated with that day
+    rpath = pjoin(rpath, timestamp[0]) 
+    rpath = pjoin(rpath, 'minian') ## navigate to .zarr files
+    mouse_minian = open_minian(rpath, return_dict=False)
     if neural_type == "traces":
         neural_activity = mouse_minian["C"]
     elif (neural_type == "spikes") or (neural_type == "smoothed"):
@@ -120,16 +121,90 @@ def load_and_align_minian(path, mouse, date, timestamp, session = '20min', neura
         raise Exception(
             "Not a valid 'neural_type'; must be one of ['traces', 'spikes', 'smoothed']."
         )
-    tpath = pjoin(path, 'Data/{}/{}/{}/miniscope'.format(mouse, date, timestamp))
+    tpath = pjoin(path, 'Data/{}/{}/{}/miniscope'.format(mouse, date, timestamp[0]))
     minian_timestamps = pd.read_csv(tpath + "/timeStamps.csv")
+    ## If you downsampled during minian processing, can change downsample_factor
     if downsample:
         minian_timestamps = minian_timestamps[::downsample_factor]
     lined_up_timeframes = align_miniscope_frames(minian_timestamps, time)
+    ## Select frames based on line-up timeframes
     neural_activity = neural_activity.sel(frame=lined_up_timeframes)
     if (
         neural_type == "smoothed"
     ):  # this filtering must be done after the previous line because this converts neural_activity to numpy array
         neural_activity = gaussian_filter(neural_activity, sigma=(1, sigma))
-
     return neural_activity
 
+
+def calculate_activity_correlation(first_session, second_session, test = 'pearson'):
+    """
+    Calculates the pearson or spearman correlation coefficients for two sessions.
+    
+    Args:
+    first_session, second_session: xarray.DataArray
+        DataArray of either spike or calcium trace activity
+    test: str
+        options are ['pearson', 'spearman']
+    """
+    ## Calculate mean activity
+    avg_first_session = first_session.values.mean(axis = 1)
+    avg_second_session = second_session.values.mean(axis = 1)
+    ## Perform correlation test
+    if test == 'pearson':
+        res = pearsonr(avg_first_session, avg_second_session)
+    elif test == 'spearman':
+        res = spearmanr(avg_first_session, avg_second_session)
+    else:
+        raise Exception('No test selected!')
+    return res
+
+
+def pairwise_session_analysis(
+    path, mouse, mappings_path, neural_type='spikes', pairs = True, analysis = 'correlation', test = 'pearson'
+):
+    """
+    Used to calculate cell activity correlations between pairs of sessions.
+    
+    Args:
+    path : str
+        experiment directory
+    mouse: str
+        name of the mouse (e.g. 'mc01')
+    mappings_path : str
+        path to cross registration results
+    neural_type: str
+        one of ['traces', 'spikes', 'smoothed']
+    pairs: boolean
+        if true, will only calculate the correlation between cells present in both sessions
+    analysis: str
+        one of ['correlation']
+    test: str
+        one of ['pearson', 'spearman']
+    """
+    ## Create empty summary dataframe
+    activity_summary = pd.DataFrame()
+    ## Get mappings
+    mappings = pd.read_pickle(mappings_path)
+    for d1,d2 in itertools.combinations(mappings.session.columns, r = 2):
+        ## Load first session's data
+        session1 = load_and_align_minian(path, mouse, date = d1)
+        ## Load second session's data
+        session2 = load_and_align_minian(path, mouse, date = d2)
+        ## Get mappings
+        mappings = pd.read_pickle(mappings_path)
+        
+        if pairs:
+            cell_ids = mappings.session[[d1, d2]].dropna(how = 'any').reset_index(drop = True)
+            ## Select data based on cell ids
+            first_session = session1.sel(unit_id = np.array(cell_ids[d1]))
+            second_session = session2.sel(unit_id = np.array(cell_ids[d2]))
+            
+            if analysis == 'correlation':
+                res = calculate_activity_correlation(first_session, second_session, test)
+                ## Create dictionary of session IDs and results
+                tmp = pd.DataFrame({'session_id1': d1,
+                                    'session_id2': d2,
+                                    'statistic': res[0],
+                                    'pvalue': res[1]}, index = [0])                      
+                activity_summary = pd.concat([activity_summary, tmp], ignore_index = True)
+    return activity_summary
