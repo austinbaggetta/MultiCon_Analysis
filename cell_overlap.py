@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import itertools
+import datetime
 
 def calculate_overlap(mappings):
     """
@@ -64,3 +65,33 @@ def within_context_overlap(overlap_summary, sessions):
         data = overlap_summary.loc[(overlap_summary.session_id1 == i[0]) & (overlap_summary.session_id2 == i[1])]
         overlap = pd.concat([overlap, data], ignore_index = True)
     return overlap
+
+
+def dates_to_days(data, start_date, days):
+    """
+    Used to convert dates (e.g. '2022_06_08') to days (e.g. 1) for intuitive axes during plotting.
+    Args:
+        data : pandas.DataFrame
+            usually pairwise comparison dataframes, if 'session_id1', etc. are dates
+        start_date : str
+            start date of the experiment (e.g. '2022_06_08')
+        days : int
+            number of days the experiment was for
+    Returns:
+        df : pandas.DataFrame
+            dates will be changed to integer days
+    """
+    ## Start date of experiment
+    start = datetime.datetime.strptime(start_date, '%Y_%m_%d')
+    ## Set DayID to 1
+    DayID = 1
+    ## Create a date range from the start of the experiment to the end 
+    dates = pd.date_range(start, periods = days)
+    ## Initialize empty dictionary
+    day_dict = {}
+    ## Loop through all dates, add each date as a key to day_dict
+    for date in dates:
+        day_dict[date.strftime('%Y_%m_%d')] = DayID
+        DayID += 1
+    df = data.replace(day_dict)
+    return df
