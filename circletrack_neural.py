@@ -45,9 +45,19 @@ def open_minian(dpath, post_process=None, return_dict=False):
 
 def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False):
     """
-    Takes timestamps matrix associated with a miniscope recording and a regularly spaced time vector the
-    expected length of the session. For each timeframe in 'time', the closest frame from minian_timestamps is acquired.
-    Some frames are used more than once. Returns vector of lined up frames to use to align recording to the time vector.
+    Takes timestamps matrix associated with a miniscope recording and a regularly spaced time vector the expected length of the session. 
+    For each timeframe in 'time', the closest frame from minian_timestamps is acquired.
+    Some frames are used more than once. 
+    Args:
+        minian_timestamps : pandas.DataFrame
+            minian timestamps from preprocessing; argument set in load_and_align_minian function
+        time : list
+            regularly spaced time vector the expected length of the session; argument set in load_and_align_minian function
+        plot_frame_usage : boolean
+            if True, creates a plot of frame usage; by default set to False
+    Returns:
+        lined_up_timeframes : list
+            vector of lined up frames to use to align recording to the time vector.
     """
     arg_mins = [np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin() for t in time]
     lined_up_timeframes = np.array(minian_timestamps['Frame Number'].values[arg_mins])
@@ -76,26 +86,29 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False):
 
 def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample = True, downsample_factor=2):
     """
-    Parameters:
-    ==========
-    dpath : str
-        experiment directory
-    mouse : str
-        name of the mouse (e.g. 'mc01')
-    date : str
-        date of session
-    timestamp : str
-        timestamp of session
-    session : str
-        one of ['20min'], may incorporate other options if length of sessions decrease from 20min
-    neural_type : str
-        one of ['traces', 'spikes', 'smoothed']
-    sigma : int
-        smoothing kernel if neural_type=smoothed
-    downsample : boolean
-        if data was downsampled during minian
-    downsample_factor : int
-        factor that minian subsampled data
+    Loads minian data and aligns the data to a regularly spaced time vector.
+    Args:
+        dpath : str
+            experiment directory
+        mouse : str
+            name of the mouse (e.g. 'mc01')
+        date : str
+            date of session
+        timestamp : str
+            timestamp of session
+        session : str
+            one of ['20min'], may incorporate other options if length of sessions decrease from 20min
+        neural_type : str
+            one of ['traces', 'spikes', 'smoothed']
+        sigma : int
+            smoothing kernel if neural_type=smoothed
+        downsample : boolean
+            if data was downsampled during minian
+        downsample_factor : int
+            factor that minian subsampled data
+    Returns:
+        neural_activity : xarray.DataArray
+            can be aligned spike or calcium trace data
     """
     # Create time vector based on expected length of session
     if "20min" in session:
@@ -139,14 +152,15 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
 def calculate_activity_correlation(first_session, second_session, test = 'pearson'):
     """
     Calculates the pearson or spearman correlation coefficients for two sessions.
-    
     Args:
-    first_session, second_session: xarray.DataArray
-        DataArray of either spike or calcium trace activity
-    test: str
-        options are ['pearson', 'spearman']
+        first_session, second_session : xarray.DataArray
+            DataArray of either spike or calcium trace activity
+        test : str
+            options are ['pearson', 'spearman']
     
-    Returns: statistic and pvalue
+    Returns: 
+        res : list
+            contains test statistic and pvalue
     """
     ## Calculate mean activity
     avg_first_session = first_session.values.mean(axis = 1)
@@ -166,24 +180,24 @@ def pairwise_session_analysis(
 ):
     """
     Used to calculate cell activity correlations between pairs of sessions.
-    
     Args:
-    path : str
-        experiment directory
-    mouse: str
-        name of the mouse (e.g. 'mc01')
-    mappings_path : str
-        path to cross registration results
-    neural_type: str
-        one of ['traces', 'spikes', 'smoothed']
-    pairs: boolean
-        if true, will only calculate the correlation between cells present in both sessions
-    analysis: str
-        one of ['correlation']
-    test: str
-        one of ['pearson', 'spearman']
-        
-    Returns: pandas DataFrame
+        path : str
+            experiment directory
+        mouse: str
+            name of the mouse (e.g. 'mc01')
+        mappings_path : str
+            path to cross registration results
+        neural_type: str
+            one of ['traces', 'spikes', 'smoothed']
+        pairs: boolean
+            if true, will only calculate the correlation between cells present in both sessions
+        analysis: str
+            one of ['correlation']
+        test: str
+            one of ['pearson', 'spearman']
+    Returns: 
+        activity_summary : pandas.DataFrame
+            pd.DataFrame with columns session_id1, session_id2, statistic, and pvalue
     """
     ## Create empty summary dataframe
     activity_summary = pd.DataFrame()
