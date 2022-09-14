@@ -8,9 +8,10 @@ vitor.lopesdossantos@pharm.ox.ac.uk).
 """
 
 import warnings
-
+import pandas as pd
 import numpy as np
 from scipy import stats
+from scipy import spatial
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 from tqdm import tqdm
@@ -415,3 +416,82 @@ def get_transient_timestamps(
     event_mags = [neuron[neuron > t] for neuron, t in zip(neural_data, thresh)]
 
     return event_times, event_mags, bool_arr
+
+####################### AUSTIN'S CODE STARTS HERE #######################
+
+def calculate_ensemble_correlation(assemblies_sess1, assemblies_sess2, test = 'pearson'):
+    """
+    Used to calculate the pearson/spearman correlation or cosine similarity between two sessions.
+    Requires cells to be shared between two sessions.
+    Args:
+        assemblies_sess1/assemblies_sess2 : dict
+            output of find_assemblies function
+        test : str
+            must be one of ['pearson', 'spearman', 'cosine_similarity']
+    Returns:
+        corr : pandas.DataFrame
+    """
+    corr = []
+    for e in range(0, assemblies_sess1['patterns'].shape[0]):
+        for i in range(0, assemblies_sess2['patterns'].shape[0]):
+            if test == 'pearson':
+                res = pearsonr(assemblies_sess1['patterns'][e], assemblies_sess2['patterns'][i])
+            elif test == 'spearman':
+                res = spearmanr(assemblies_sess1['patterns'][e], assemblies_sess2['patterns'][i])
+            elif test == 'cosine_similarity':
+                res = (1 - spatial.distance.cosine(assemblies_sess1['patterns'][e], assemblies_sess2['patterns'][i]))
+            else:
+                raise Exception("Not a valid test! Must be 'pearson', 'spearman', or 'cosine_similarity'")
+            tmp = [e, i, res[0], res[1]]
+            corr.append(tmp)
+    corr = pd.DataFrame(corr, columns = ['ensemble_id1', 'ensemble_id2', 'statistic', 'pvalue'])
+    return corr
+
+def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
+    """
+    Identifies positively or negatively correlated ensembles calculated from the calculate_ensemble_correlation function.
+    Args:
+        corr : pandas.DataFrame
+            output from calculate_ensemble_correlation function
+        alpha : float
+            alpha level for significance; default is 0.05
+        direction : str
+            must be one of ['positive', 'negative'] to identify positively or negatively correlated ensembles
+    """
+    if direction == 'positive':
+        pos_corr = corr.loc[(corr.pvalue < alpha) & (corr.statistic > 0)].reset_index(drop = True)
+        return pos_corr
+    elif direction == 'negative':
+        neg_corr = corr.loc[(corr.pvalue < alpha) & (corr.statistic < 0)].reset_index(drop = True)
+        return neg_corr
+    else:
+        raise Exception("Direction must be 'positive' or 'negative'!")
+
+
+def assemblies_between_sessions(path, mouse, neural_type = 'spikes'):
+    """
+    Used to identify cell assemblies between multiple sessions. Uses cosine similarity to determine whether an
+    ensemble is highly similar to an ensemble from a previous session.
+    
+    Args:
+    path : str
+        experiment directory
+    mouse: str
+        name of the mouse (e.g. 'mc01')
+    neural_type: str
+        one of ['traces', 'spikes', 'smoothed']
+    
+    """
+    ## Create empty summary dataframe
+    assemblies_summary = pd.DataFrame()
+    for d1,d2 in itertools.combinations(mappings.session.columns, r = 2):
+        ## Load first session's data
+        session1 = load_and_align_minian(path, mouse, date = d1)
+        ## Load second session's data
+        session2 = load_and_align_minian(path, mouse, date = d2)
+        ## Find assemblies for session 1
+        first_session_assemblies = find_assemblies(session1)
+        ## Find assemblies for session 2
+        second_session_assemblies = find_assemblies(session2)
+        
+       

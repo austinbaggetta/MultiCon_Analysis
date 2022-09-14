@@ -145,6 +145,8 @@ def calculate_activity_correlation(first_session, second_session, test = 'pearso
         DataArray of either spike or calcium trace activity
     test: str
         options are ['pearson', 'spearman']
+    
+    Returns: statistic and pvalue
     """
     ## Calculate mean activity
     avg_first_session = first_session.values.mean(axis = 1)
@@ -160,7 +162,7 @@ def calculate_activity_correlation(first_session, second_session, test = 'pearso
 
 
 def pairwise_session_analysis(
-    path, mouse, mappings_path, neural_type='spikes', pairs = True, analysis = 'correlation', test = 'pearson'
+    path, mouse, mappings_path, neural_type = 'spikes', pairs = True, analysis = 'correlation', test = 'pearson'
 ):
     """
     Used to calculate cell activity correlations between pairs of sessions.
@@ -180,6 +182,8 @@ def pairwise_session_analysis(
         one of ['correlation']
     test: str
         one of ['pearson', 'spearman']
+        
+    Returns: pandas DataFrame
     """
     ## Create empty summary dataframe
     activity_summary = pd.DataFrame()
@@ -190,8 +194,6 @@ def pairwise_session_analysis(
         session1 = load_and_align_minian(path, mouse, date = d1)
         ## Load second session's data
         session2 = load_and_align_minian(path, mouse, date = d2)
-        ## Get mappings
-        mappings = pd.read_pickle(mappings_path)
         
         if pairs:
             cell_ids = mappings.session[[d1, d2]].dropna(how = 'any').reset_index(drop = True)
