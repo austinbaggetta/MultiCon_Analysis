@@ -16,6 +16,7 @@ from numpy.polynomial.polynomial import polyfit
 from plotly.subplots import make_subplots
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 from scipy.stats import pearsonr, zscore, spearmanr
+import itertools
 
 
 def open_minian(dpath, post_process=None, return_dict=False):
@@ -152,15 +153,15 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
 def calculate_activity_correlation(first_session, second_session, test = 'pearson'):
     """
     Calculates the pearson or spearman correlation coefficients for two sessions.
+    Uses each cell's average activity across the session.
     Args:
-        first_session, second_session : xarray.DataArray
+        first_session, second_session: xarray.DataArray
             DataArray of either spike or calcium trace activity
-        test : str
+        test: str
             options are ['pearson', 'spearman']
-    
-    Returns: 
+    Returns:
         res : list
-            contains test statistic and pvalue
+            res[0] gives the test statistic, res[1] gives the pvalue
     """
     ## Calculate mean activity
     avg_first_session = first_session.values.mean(axis = 1)
@@ -176,7 +177,7 @@ def calculate_activity_correlation(first_session, second_session, test = 'pearso
 
 
 def pairwise_session_analysis(
-    path, mouse, mappings_path, neural_type = 'spikes', pairs = True, analysis = 'correlation', test = 'pearson'
+    path, mouse, mappings_path, neural_type='spikes', pairs = True, analysis = 'correlation', test = 'pearson'
 ):
     """
     Used to calculate cell activity correlations between pairs of sessions.
@@ -195,32 +196,37 @@ def pairwise_session_analysis(
             one of ['correlation']
         test: str
             one of ['pearson', 'spearman']
-    Returns: 
+    Returns:
         activity_summary : pandas.DataFrame
-            pd.DataFrame with columns session_id1, session_id2, statistic, and pvalue
     """
-    ## Create empty summary dataframe
-    activity_summary = pd.DataFrame()
     ## Get mappings
     mappings = pd.read_pickle(mappings_path)
-    for d1,d2 in itertools.combinations(mappings.session.columns, r = 2):
+    ## Create empty list
+    activity_summary = []
+    for d1,d2 in itertools.combinations_with_replacement(mappings.session.columns, r = 2):
         ## Load first session's data
-        session1 = load_and_align_minian(path, mouse, date = d1)
+        session1 = load_and_align_minian(path, mouse, date = d1, neural_type = neural_type)
         ## Load second session's data
-        session2 = load_and_align_minian(path, mouse, date = d2)
+        session2 = load_and_align_minian(path, mouse, date = d2, neural_type = neural_type)
         
         if pairs:
-            cell_ids = mappings.session[[d1, d2]].dropna(how = 'any').reset_index(drop = True)
-            ## Select data based on cell ids
-            first_session = session1.sel(unit_id = np.array(cell_ids[d1]))
-            second_session = session2.sel(unit_id = np.array(cell_ids[d2]))
+            ## Since d1 and d2 can be the same with replacement, the number of cell pairs in this combination is higher than
+            ## the actual number of cells, so drop_duplicates() is used
+            if d1 == d2:
+                cell_ids = mappings.session[[d1, d2]].dropna(how = 'any').drop_duplicates().reset_index(drop = True)
+            else:
+                cell_ids = mappings.session[[d1, d2]].dropna(how = 'any').reset_index(drop = True)
+            ## Select unit_ids based on cell_ids
+            first_session = session1.sel(unit_id = np.array(cell_ids.iloc[:, 0]))
+            second_session = session2.sel(unit_id = np.array(cell_ids.iloc[:, 1]))
             
             if analysis == 'correlation':
                 res = calculate_activity_correlation(first_session, second_session, test)
                 ## Create dictionary of session IDs and results
-                tmp = pd.DataFrame({'session_id1': d1,
-                                    'session_id2': d2,
-                                    'statistic': res[0],
-                                    'pvalue': res[1]}, index = [0])                      
-                activity_summary = pd.concat([activity_summary, tmp], ignore_index = True)
+                tmp = [d1, d2, res[0], res[1]] 
+                tmp2 = [d2, d1, res[0], res[1]]
+                activity_summary.append(tmp)
+                activity_summary.append(tmp2)
+    ## Convert list to pd.DataFrame            
+    activity_summary = pd.DataFrame(activity_summary, columns = ['session_id1', 'session_id2', 'statistic', 'pvalue'])
     return activity_summary
