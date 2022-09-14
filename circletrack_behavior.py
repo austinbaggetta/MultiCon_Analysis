@@ -7,38 +7,81 @@ from os.path import join as pjoin
 
 
 def get_file_list(rpath):
-    ## Get list of circle_track.csv files by setting rpath
-    ## Example rpath: r'/media/caishuman/csstorage3/Austin/CircleTrack/LargeScale/MultiCon_Verification/Data/**/**/**/circle_track.csv'
+    """
+    Get list of circle_track.csv files by setting rpath.
+    Args:
+        rpath : str
+            path to where circle_track.csv file is; can use **/** in path if all directories follow a general structure
+            (e.g '../LargeScale/MultiCon_Verification/Data/**/**/**/circle_track.csv')
+    Returns:
+        file_list: list
+    """
     ## Create list of files
     file_list = glob.glob(rpath)
     return file_list
 
 
 def get_mouse(file_list, str2match):
-    ## Used to extract mouse name from file string
+    """
+    Used to extract mouse name from file string.
+    Args:
+        file_list : list
+            contains a list of paths as strings from get_file_list function
+        str2match : str
+            regex pattern to extract mouse name (e.g. '(mc[0-9]+)')
+    Returns: str
+        mouse name (e. g. mc01)
+    """
     ## Use a for loop to extract mouse name from every file in file_list
-    ## Example str2match: r'(mcv[0-9]+)'
     mouseID = re.search(str2match, file_list)
     return mouseID.group()
 
 
 def combine(file_list, mouse_list):
-    ## Combine the whole file_list with mouse_list
-    ## Combines both into a data frame with filepath and mouse column names
+    """
+    Combine file_list with mouse_list
+    Args:
+        file_list : list
+            contains a list of paths as strings from get_file_list function
+        mouse_list : list
+            contains a list of mouse names as strings from get_mouse function within a for loop
+    Returns:
+        combined : pandas.DataFrame
+            columns filepath and mouse
+    """
     files = pd.DataFrame(file_list, columns = ['filepath'])
     mice = pd.DataFrame(mouse_list, columns = ['mouse'])
     combined = pd.concat([files, mice], axis = 1)
     return combined
 
 
-def subset_combined(data, mouse):
+def subset_combined(combined_df, mouse):
+    """
+    Subsets combined file_list and mouse_list based on mouse argument
+    Args: 
+        combined_df : pandas.DataFrame
+            pd.DataFrame from combine function
+        mouse : str
+            mouse name (e.g. 'mc01')
+    Returns:
+        file_list : pandas.DataFrame
+            contains paths for the circle_track.csv data for the mouse of interest
+    """
     ## Subsets combined file_list and mouse_list based on mouse string
-    files = data.loc[data.mouse == mouse]
+    files = combined_df.loc[combined_df.mouse == mouse]
     file_list = files.filepath
     return file_list
 
 
 def crop_data(data):
+    """
+    Crop data from START to TERMINATE
+    Args:
+        data : pandas.DataFrame
+            circle_track.csv data with three columns
+    Returns:
+        df : pandas.DataFrame
+    """
     ## Get data from START to TERMINATE
     if any(data.event == 'TERMINATE'):
         df = data[np.where(data['event'] == 'START')[0][0]:np.where(data['event'] == 'TERMINATE')[0][0]+1]
@@ -48,14 +91,22 @@ def crop_data(data):
 
 
 def get_rewarding_ports(data):
-    ## Get rewarding ports
+    """
+    Get rewarding ports for that session.
+    Args:
+        data : pandas.DataFrame
+            circle_track.csv data with three columns
+    Returns:
+        reward_first, reward_second : str
+            returns string of which ports were the rewarding ports in that session
+    """
     ## In more recent circle track experiments, initialization was added to easily get rewarding ports
     ## Previous experiments require assessing from rewarding licks
     if any(data.event == 'initializing'):
         reward_ports = data.loc[data.event == 'initializing'].reset_index(drop = True)
         reward_first = reward_ports.data[0]
         reward_second = reward_ports.data[1]
-        return(reward_first, reward_second)
+        return reward_first, reward_second
     else:
         all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop = True)
         reward_ports = pd.DataFrame(all_rewards.unique(), columns = ['data'])
@@ -65,6 +116,15 @@ def get_rewarding_ports(data):
 
 
 def get_licks(data):
+    """
+    Get lick data within a session
+    Args:
+        data : pandas.DataFrame
+            circle_track.csv data with three columns
+    Returns:
+        lick_tmp : pandas.DataFrame
+            dataframe with lick events
+    """
     ## Get licks
     lick_tmp = data.loc[(data.event == 'LICK') | (data.event == 'REWARD')].replace(to_replace='REWARD', value='LICK').reset_index(drop = True)
     return lick_tmp
@@ -136,16 +196,34 @@ def load_and_align_behavior(dpath, mouse, date, timestamp, session = '20min', sa
     
     
 def normalize_timestamp(data):
-    ## Normalize timestamp to get seconds
+    """
+    Convert timestamps to seconds
+    Args:
+        data : pandas.DataFrame
+            circle_track.csv data with three columns
+    Returns:
+        data : pandas.DataFrame
+            timestamp column converted to seconds
+    """
     time = float(data.timestamp.loc[data.event == 'START'])
     data.timestamp = (data.timestamp - time)
     return data
 
 
 def calculate_lick_accuracy(lick_tmp, reward_first, reward_second):
-    ## Calculate lick accuracy
-    ## lick_tmp is a data frame from the output of the get_licks function
-    ## reward_first and reward_second can either be manually input, or can be determined from get_rewarding_ports function
+    """
+    Calculate lick accuracy for a session.
+    Selects the first lick in a bout of licks, calculates the number of first licks per rewarding port.
+    Args:
+        lick_tmp : pandas.DataFrame
+            output from get_licks function
+        reward_first, reward_second : str
+            rewarding port numbers (e.g. 'reward1')
+            can either be manually input or determined from get_rewarding_ports function
+    Returns:
+        percent_correct : float
+            lick accuracy for that session in percentage points
+    """
     ## Shift data column, corresponds to licks at reward port
     lick_tmp.insert(loc = 3, 
                     column = 'shifted',
@@ -164,11 +242,21 @@ def calculate_lick_accuracy(lick_tmp, reward_first, reward_second):
 
 
 def get_total_rewards(file_list, mouse):
-    ## Calculate total rewards for a mouse across all of that mouse's sessions
-    ## Can be combined with a for loop to get entire cohort's total rewards
+    """
+    Calculate total rewards for a mouse across all sessions.
+    Can be combined with a for loop to get entire cohort's total rewards.
+    Args:
+        file_list : pandas.DataFrame
+            combined file_list and mouse_list from combine function
+        mouse : str
+            mouse name (e.g. 'mc01')
+    Returns:
+        reward_data : pandas.DataFrame
+            pd.DataFrame with columns total_rewards, mouse, and day
+    """
     ## Subset file_list based on mouse
     files = subset_combined(file_list, mouse)
-    ## Initialize empty data frame
+    ## Initialize empty dictionary
     reward_data = {'total_rewards': [], 'mouse': [], 'day': []}
     ## Loop through files
     DayID = 1
@@ -176,7 +264,7 @@ def get_total_rewards(file_list, mouse):
         data = pd.read_csv(path)
         ## Crop data
         cropped_data = crop_data(data)
-        ## Get rewards
+        ## Get total rewards
         total_rewards = len(cropped_data.loc[cropped_data.event == 'REWARD'])
         ## append to dictionary
         reward_data['total_rewards'].append(total_rewards)
@@ -190,9 +278,18 @@ def get_total_rewards(file_list, mouse):
 
 
 def get_lick_accuracy(file_list, mouse):
-    ## Calculate first lick accuracy
-    ## Selects the first lick in a bout of licks, calculates the number of first licks per rewarding port
-    ## Subsequently divides the sum of the first licks at the two rewarding ports by the total number of first licks
+    """
+    Calculate first lick accuracy by dividing the suum of first licks at both rewarding ports by total number of first licks.
+    Can be combined with a for loop to get lick accuracy for an entire cohort.
+    Args: 
+        file_list : pandas.DataFrame
+            combined file_list and mouse_list from combine function
+        mouse : str
+            mouse name (e.g. 'mc01')
+    Returns:
+        lick_data : pandas.DataFrame
+            pd.DataFrame with columns percent_correct, mouse, and day
+    """
     ## Subset file_list based on mouse
     files = subset_combined(file_list, mouse)
     ## Initialize empty data frame
@@ -221,7 +318,17 @@ def get_lick_accuracy(file_list, mouse):
 
 
 def get_location_data(file_list, mouse):
-    ## Get x, y, and angular position of the mouse across the sessions
+    """
+    Get x, y,, and angular position of the mouse across all sessions.
+    Args: 
+        file_list : pandas.DataFrame
+            combined file_list and mouse_list from combine function
+        mouse : str
+            mouse name (e.g. 'mc01')
+    Returns:
+        location_data : pandas.DataFrame
+            pd.DataFrame with columns x_pos, y_pos, a_pos, mouse, day
+    """
     ## Subset file_list based on mouse
     files = subset_combined(file_list, mouse)
     ## Initialize empty data frame
@@ -249,8 +356,22 @@ def get_location_data(file_list, mouse):
     location_data = pd.DataFrame(location_data)
     return location_data
 
-## Determine direction based on angular position
+
 def get_direction_information(location_data, lagn = 15):
+    """
+    Determine direction based on angular position.
+    Args:
+        location_data : pandas.DataFrame
+            output from get_location_data function
+        lagn : float
+            number of frames to calculate the difference between angular positions; 
+            by default set to 15 frames since data is sampled at 30 frames per second;
+            can be changed to account for temporal downsampling to align miniscope and behavior data
+    Returns:
+        location_data : pandas.DataFrame
+            adds a column titled direction with either correct, wrong, or NA direction (NA if offset is 0);
+            direction is correct if difference between angular positions is negative
+    """
     ## Calculate difference between angular position rows
     location_data.insert(3, 'a_offset', value = location_data.a_pos.diff(periods = lagn))
     ## Create conditions
@@ -265,8 +386,16 @@ def get_direction_information(location_data, lagn = 15):
     location_data['direction'] = np.select(conditions, choices)
     return location_data
 
-## Calculate percentage of time spent in the correct direction
-## Takes location_data input after get_direction_information was used
+
 def direction_percentage(location_data):
+    """
+    Calculates percentage of time spent in the correct direction
+    Args:
+        location_data : pandas.DataFrame
+            output from get_location_data and get_direction_information functions
+    Returns:
+        direction_percent : float
+            percent of time moving in correct direction
+    """
     direction_percent = len(location_data.loc[location_data.direction == 'correct']) / (len(location_data.loc[location_data.direction == 'correct']) + len(location_data.loc[location_data.direction == 'wrong'])) * 100
     return direction_percent
