@@ -4,7 +4,13 @@ import itertools
 
 def calculate_overlap(mappings):
     """
-    Mappings is the output from Minian cross-registration function calculate_mappings, which calculates pairwise cell identities.
+    Calculates the cell percent overlap between all pairs of sessions.
+    Args:
+        mappings : pandas.DataFrame
+            mappings is the output from Minian cross-registration function calculate_mappings, which calculates pairwise cell ids
+    Returns:
+        overlap_summary : pandas.DataFrame
+            pd.DataFrame with columns session_id1, session_id2, total (total # cells), pairs (# of cell pairs between two sessions), overlap (percent)
     """
     ## Create empty data frame
     overlap_summary = pd.DataFrame(columns = ['session_id1', 'session_id2', 'total', 'pairs', 'overlap'])
@@ -44,13 +50,14 @@ def calculate_overlap(mappings):
 def within_context_overlap(overlap_summary, sessions):
     """
     Creates a data frame of within context sessions which can subsequently be manipulated.
-    
-    overlap_summary : dataframe
-        output from calculate_overlap function above
-    sessions : list
-        list of sessions, for example ['1', '2', '3', '4', '5'] if mouse was in one context for 5 days
-    context : str
-        demarcates what context the mouse was in, e.g. 'A'
+    Args:
+        overlap_summary : pandas.DataFrame
+            output from calculate_overlap function 
+        sessions : list
+            list of sessions as strings, for example ['1', '2', '3', '4', '5'] if mouse was in one context for 5 days
+    Returns:
+        overlap : pandas.DataFrame
+            pd.DataFrame of all session pairwise comparisons
     """
     overlap = pd.DataFrame()
     for i in itertools.combinations(sessions, r = 2):
