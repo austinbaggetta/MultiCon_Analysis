@@ -430,6 +430,7 @@ def calculate_ensemble_correlation(assemblies_sess1, assemblies_sess2, test = 'p
             must be one of ['pearson', 'spearman', 'cosine_similarity']
     Returns:
         corr : pandas.DataFrame
+            pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue
     """
     corr = []
     for e in range(0, assemblies_sess1['patterns'].shape[0]):
@@ -457,6 +458,9 @@ def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
             alpha level for significance; default is 0.05
         direction : str
             must be one of ['positive', 'negative'] to identify positively or negatively correlated ensembles
+    Returns:
+        pos_corr or neg_corr : pandas.DataFrame
+            pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue
     """
     if direction == 'positive':
         pos_corr = corr.loc[(corr.pvalue < alpha) & (corr.statistic > 0)].reset_index(drop = True)
@@ -470,16 +474,15 @@ def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
 
 def assemblies_between_sessions(path, mouse, neural_type = 'spikes'):
     """
-    Used to identify cell assemblies between multiple sessions. Uses cosine similarity to determine whether an
-    ensemble is highly similar to an ensemble from a previous session.
-    
+    Used to identify cell assemblies between all pairwise session comparisons.
     Args:
-    path : str
-        experiment directory
-    mouse: str
-        name of the mouse (e.g. 'mc01')
-    neural_type: str
-        one of ['traces', 'spikes', 'smoothed']
+        path : str
+            experiment directory
+        mouse: str
+            name of the mouse (e.g. 'mc01')
+        neural_type: str
+            one of ['traces', 'spikes', 'smoothed']
+    Returns:
     
     """
     ## Create empty summary dataframe
