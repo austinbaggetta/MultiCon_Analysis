@@ -1,5 +1,6 @@
 import os
 import pickle
+import yaml
 from os import listdir
 from os.path import isdir
 from os.path import join as pjoin
@@ -148,6 +149,37 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
     ):  # this filtering must be done after the previous line because this converts neural_activity to numpy array
         neural_activity = gaussian_filter(neural_activity, sigma=(1, sigma))
     return neural_activity
+
+
+def import_mouse_data(path, mouse, key_file, neural_type = 'spikes'):
+    """
+    Import all data for one mouse.
+    Args:
+        path : str
+            path to experiment directory
+        mouse : str
+            mouse name
+        key_file : str
+            name of yaml file that contains mouse as key and inner dictionary with context as key and date as value (e.g. A1 : 2022_06_08)
+        neural_type : str
+            what type of minian data to be loaded; by default spike data
+    Returns:
+        sessions : dict
+            key is context, value is xarray.DataArray from minian output
+    """
+    ## Initialize sessions
+    sessions = {}
+    ## Load keys
+    key_path = pjoin(path, key_file)
+    with open(key_path, 'r') as stream:
+        data_loaded = yaml.safe_load(stream)
+    ## Select keys for a specific mouse
+    keys = data_loaded[mouse]
+    dpath = pjoin(path, 'Results/')
+    dpath = pjoin(dpath, '{}/'.format(mouse))
+    for date in os.listdir(dpath):
+        sessions[list(keys.keys())[list(keys.values()).index([date])]] = ctn.load_and_align_minian(path, mouse, date, neural_type = neural_type)
+    return sessions
 
 
 def calculate_activity_correlation(first_session, second_session, test = 'pearson'):
