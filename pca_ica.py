@@ -15,6 +15,9 @@ from scipy import spatial
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 from tqdm import tqdm
+from scipy.stats import pearsonr, spearmanr, zscore
+import plotly.express as px
+import plotly.graph_objects as go
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -419,6 +422,7 @@ def get_transient_timestamps(
 
 ####################### AUSTIN'S CODE STARTS HERE #######################
 
+
 def calculate_ensemble_correlation(assemblies_sess1, assemblies_sess2, test = 'pearson'):
     """
     Used to calculate the pearson/spearman correlation or cosine similarity between two sessions.
@@ -448,6 +452,7 @@ def calculate_ensemble_correlation(assemblies_sess1, assemblies_sess2, test = 'p
     corr = pd.DataFrame(corr, columns = ['ensemble_id1', 'ensemble_id2', 'statistic', 'pvalue'])
     return corr
 
+
 def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
     """
     Identifies positively or negatively correlated ensembles calculated from the calculate_ensemble_correlation function.
@@ -470,7 +475,77 @@ def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
         return neg_corr
     else:
         raise Exception("Direction must be 'positive' or 'negative'!")
+        
 
+def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test = 'pearson', 
+                                    iterations = 1000, plot_distribution = False):
+    """
+    Used to perform bootstrap analysis of either Pearson correlation test statistics or cosine similarity values.
+    Args:
+        assemblies_sess1, assemblies_sess2 : dict
+            output of find_assemblies function
+        test : str
+            must be one of ['pearson', 'cosine_similarity']
+        iterations : int
+            number of times to bootstrap; by default 1000
+        plot_distribution : boolean
+            creates a histogram of the test statistic; by default False
+    Returns: 
+        df : pandas.DataFrame
+            pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, pvalue, and iteration
+    """
+    dictionary = {'ensemble_id1': [], 'ensemble_id2': [], 'statistic': [], 'pvalue': [], 'iteration': []}
+    for e in range(0, assemblies_sess1['patterns'].shape[0]):
+        for n_times in range(1, iterations+1):
+            for i in range(0, assemblies_sess2['patterns'].shape[0]):
+                samples = np.random.choice(assemblies_sess2['patterns'][i], assemblies_sess2['patterns'].shape[1],
+                                           replace = False)
+                ## Use pearson correlation to get a distribution of test statistics
+                if test == 'pearson':
+                    res = pearsonr(assemblies_sess1['patterns'][e], samples)
+                ## Use cosine similarity to get a distribution of similarity values
+                ## Append results to dictionary   
+                dictionary['ensemble_id1'].append(e)
+                dictionary['ensemble_id2'].append(i)
+                dictionary['statistic'].append(res[0])
+                dictionary['pvalue'].append(res[1])
+                dictionary['iteration'].append(n_times)
+    ## Convert to dataframe           
+    df = pd.DataFrame(dictionary)
+    ## Histogram
+    if plot_distribution:
+        fig = px.histogram(df, x = 'statistic', template = 'simple_white')
+        fig.show()
+    return df
+
+
+def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percentile = 95, direction = 'positive'):
+    """
+    Determine matched ensembles.
+    Args:
+        corr_ensembles: pandas.DataFrame
+            pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue from identify_correlated_ensembles
+        bootstrap_correlations : pandas.DataFrame
+            pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue from bootstrap_ensemble_correlations
+        percentile : int
+            what percentile the test statistic has to be above to be kept; by default 95th percentile
+        direction : str
+            must be one of ['positive', 'negative']; must be the same as identify_correlated_ensembles
+    Returns:
+        matched : pandas.DataFrame
+           pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue
+           These are the ensemble pairs that are above the given percentile
+    """
+    ## Find out what statistic value represents that percentile
+    cutoff = np.percentile(bootstrap_correlations['statistic'], percentile)
+    ## Get ensemble comparisons that fall above 95% on either side of the distribution
+    if direction == 'positive':
+        matched = corr_ensembles.loc[corr_ensembles.statistic > cutoff]
+    elif direction == 'negative':
+        matched = corr_ensembles.loc[corr_ensembles.statistic < (-cutoff)]
+    else:
+        raise Exception("No direction given! Must be one of ['positive', 'negative']")
+    return matched
 
 def assemblies_between_sessions(path, mouse, neural_type = 'spikes'):
     """
@@ -485,16 +560,6 @@ def assemblies_between_sessions(path, mouse, neural_type = 'spikes'):
     Returns:
     
     """
-    ## Create empty summary dataframe
-    assemblies_summary = pd.DataFrame()
-    for d1,d2 in itertools.combinations(mappings.session.columns, r = 2):
-        ## Load first session's data
-        session1 = load_and_align_minian(path, mouse, date = d1)
-        ## Load second session's data
-        session2 = load_and_align_minian(path, mouse, date = d2)
-        ## Find assemblies for session 1
-        first_session_assemblies = find_assemblies(session1)
-        ## Find assemblies for session 2
-        second_session_assemblies = find_assemblies(session2)
+
         
        
