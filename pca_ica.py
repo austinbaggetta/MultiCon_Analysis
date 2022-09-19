@@ -435,19 +435,22 @@ def calculate_ensemble_correlation(assemblies_sess1, assemblies_sess2, test = 'p
     Returns:
         corr : pandas.DataFrame
             pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue
+            pvalue is NaN if cosine similarity is calculated
     """
     corr = []
     for e in range(0, assemblies_sess1['patterns'].shape[0]):
         for i in range(0, assemblies_sess2['patterns'].shape[0]):
             if test == 'pearson':
                 res = pearsonr(assemblies_sess1['patterns'][e], assemblies_sess2['patterns'][i])
+                tmp = [e, i, res[0], res[1]]
             elif test == 'spearman':
                 res = spearmanr(assemblies_sess1['patterns'][e], assemblies_sess2['patterns'][i])
+                tmp = [e, i, res[0], res[1]]
             elif test == 'cosine_similarity':
                 res = (1 - spatial.distance.cosine(assemblies_sess1['patterns'][e], assemblies_sess2['patterns'][i]))
+                tmp = [e, i, res, np.nan]
             else:
                 raise Exception("Not a valid test! Must be 'pearson', 'spearman', or 'cosine_similarity'")
-            tmp = [e, i, res[0], res[1]]
             corr.append(tmp)
     corr = pd.DataFrame(corr, columns = ['ensemble_id1', 'ensemble_id2', 'statistic', 'pvalue'])
     return corr
@@ -493,6 +496,7 @@ def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test = '
     Returns: 
         df : pandas.DataFrame
             pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, pvalue, and iteration
+            pvalue is NaN if cosine similarity is calculated
     """
     dictionary = {'ensemble_id1': [], 'ensemble_id2': [], 'statistic': [], 'pvalue': [], 'iteration': []}
     for e in range(0, assemblies_sess1['patterns'].shape[0]):
@@ -503,13 +507,21 @@ def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test = '
                 ## Use pearson correlation to get a distribution of test statistics
                 if test == 'pearson':
                     res = pearsonr(assemblies_sess1['patterns'][e], samples)
+                    dictionary['ensemble_id1'].append(e)
+                    dictionary['ensemble_id2'].append(i)
+                    dictionary['statistic'].append(res[0])
+                    dictionary['pvalue'].append(res[1])
+                    dictionary['iteration'].append(n_times)
                 ## Use cosine similarity to get a distribution of similarity values
-                ## Append results to dictionary   
-                dictionary['ensemble_id1'].append(e)
-                dictionary['ensemble_id2'].append(i)
-                dictionary['statistic'].append(res[0])
-                dictionary['pvalue'].append(res[1])
-                dictionary['iteration'].append(n_times)
+                elif test == 'cosine_similarity':
+                    res = (1 - spatial.distance.cosine(assemblies_sess1['patterns'][e], samples))
+                    dictionary['ensemble_id1'].append(e)
+                    dictionary['ensemble_id2'].append(i)
+                    dictionary['statistic'].append(res)
+                    dictionary['pvalue'].append(np.nan)
+                    dictionary['iteration'].append(n_times)
+                else:
+                    raise Exception("Incorrect 'test' argument! Must be one of ['pearson', 'cosine_similarity']")
     ## Convert to dataframe           
     df = pd.DataFrame(dictionary)
     ## Histogram
@@ -519,7 +531,7 @@ def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test = '
     return df
 
 
-def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percentile = 95, direction = 'positive'):
+def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percentile = 95, direction = 'positive', test = 'correlations'):
     """
     Determine matched ensembles.
     Args:
@@ -531,6 +543,8 @@ def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percenti
             what percentile the test statistic has to be above to be kept; by default 95th percentile
         direction : str
             must be one of ['positive', 'negative']; must be the same as identify_correlated_ensembles
+        test : str
+            must be one of ['correlations', 'cosine_similarity']
     Returns:
         matched : pandas.DataFrame
            pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue
@@ -539,13 +553,24 @@ def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percenti
     ## Find out what statistic value represents that percentile
     cutoff = np.percentile(bootstrap_correlations['statistic'], percentile)
     ## Get ensemble comparisons that fall above 95% on either side of the distribution
-    if direction == 'positive':
-        matched = corr_ensembles.loc[corr_ensembles.statistic > cutoff]
-    elif direction == 'negative':
-        matched = corr_ensembles.loc[corr_ensembles.statistic < (-cutoff)]
+    if test == 'correlations':
+        if direction == 'positive':
+            matched = corr_ensembles.loc[corr_ensembles.statistic > cutoff]
+        elif direction == 'negative':
+            matched = corr_ensembles.loc[corr_ensembles.statistic < (-cutoff)]
+        else:
+            raise Exception("No direction given! Must be one of ['positive', 'negative']")
+    elif test == 'cosine_similarity':
+        if direction == 'positive':
+            matched = corr_ensembles.loc[corr_ensembles.statistic > cutoff]
+        elif direction == 'negative':
+            matched = corr_ensembles.loc[corr_ensembles.statistic < (-cutoff)]
+        else:
+            raise Exception("No direction given! Must be one of ['positive', 'negative']")
     else:
-        raise Exception("No direction given! Must be one of ['positive', 'negative']")
+        raise Exception("No test given! Must be one of ['correlations', 'cosine_similarity']")
     return matched
+
 
 def assemblies_between_sessions(path, mouse, neural_type = 'spikes'):
     """
