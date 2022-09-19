@@ -39,6 +39,8 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     """
     Used to create pairwise comparison heatmaps for all days.
     Args: 
+    Returns:
+        fig : plotly object
     """
     ## Create heatmap matrix
     matrix = data.pivot_table(index = index, columns = column, values = value)
