@@ -153,7 +153,7 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
 
 def import_mouse_data(path, mouse, key_file, neural_type = 'spikes'):
     """
-    Import all data for one mouse.
+    Import all data for one mouse. Requires a yml file that contains session identifier keys.
     Args:
         path : str
             path to experiment directory
