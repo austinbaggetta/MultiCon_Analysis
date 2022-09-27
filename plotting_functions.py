@@ -79,7 +79,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def behavior_across_days(data, behavior_output, marker_color = 'rgb(179,179,179)', template = 'simple_white'):
+def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_color = 'rgb(179,179,179)', template = 'simple_white'):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -96,9 +96,21 @@ def behavior_across_days(data, behavior_output, marker_color = 'rgb(179,179,179)
         fig : plotly.graph_objs._figure.Figure
             figure     
     """
+    ## Calculate mean for each day
+    avg_data = data.groupby([groupby_var]).mean().reset_index()
+    ## Calculate SEM for each day
+    sem_data = data.groupby([groupby_var]).sem().reset_index()
+    ## Create figure
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x = data.day, y = data[behavior_output],
+    ## Plot individual subjects
+    fig.add_trace(go.Scatter(x = data[groupby_var], y = data[behavior_var],
                              mode = 'markers', opacity = 0.5,
                              marker = dict(color = marker_color, line = dict(width = 1))))
+    ## Plot group average
+    fig.add_trace(go.Scatter(x = avg_data[groupby_var], y = avg_data[behavior_var],
+                             mode = 'lines+markers',
+                             error_y = dict(type = 'data', array = sem_data[behavior_var]),
+                             line = dict(color = 'rgb(172,78,163)')))
     fig.update_layout(template = template, xaxis_title = 'Day')
+    fig.update_layout(showlegend = False)
     return fig
