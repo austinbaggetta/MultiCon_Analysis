@@ -77,3 +77,28 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     else:
         raise Exception("Incorrect graph argument! Must be one of ['overlap', 'activity']")
     return fig
+
+
+def behavior_across_days(data, behavior_output, marker_color = 'rgb(179,179,179)', template = 'simple_white'):
+    """
+    Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
+    Includes individual subjects plotted over average.
+    Args:
+        data : pandas.DataFrame
+            output from circletrack_behavior functions
+        behavior_output : str
+            behavior variable of interest (e.g. 'total_rewards')
+        marker_color : str
+            color of individual subject points; by default grey
+        template : str
+            plot template; by default simple_white
+    Returns:
+        fig : plotly.graph_objs._figure.Figure
+            figure     
+    """
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x = data.day, y = data[behavior_output],
+                             mode = 'markers', opacity = 0.5,
+                             marker = dict(color = marker_color, line = dict(width = 1))))
+    fig.update_layout(template = template, xaxis_title = 'Day')
+    return fig
