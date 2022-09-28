@@ -397,5 +397,12 @@ def direction_percentage(location_data):
         direction_percent : float
             percent of time moving in correct direction
     """
-    direction_percent = len(location_data.loc[location_data.direction == 'correct']) / (len(location_data.loc[location_data.direction == 'correct']) + len(location_data.loc[location_data.direction == 'wrong'])) * 100
-    return direction_percent
+    direction_percentage = {'direction_percentage': [], 'day': [], 'mouse': []}
+    for day in range(1, len(location_data['day'].unique())+1):
+        position_data = location_data.loc[location_data.day == day]
+        percentage = len(position_data.loc[position_data.direction == 'correct']) / (len(position_data.loc[position_data.direction == 'correct']) + len(position_data.loc[position_data.direction == 'wrong'])) * 100
+        direction_percentage['direction_percentage'].append(percentage)
+        direction_percentage['day'].append(day)
+        direction_percentage['mouse'].append(position_data['mouse'].unique()[0])
+    direction_percentage = pd.DataFrame(direction_percentage)
+    return direction_percentage
