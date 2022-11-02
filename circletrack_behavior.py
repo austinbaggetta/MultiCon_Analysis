@@ -3,7 +3,10 @@ import numpy as np
 import os
 import re
 import glob
+import plotly.express as px
+import plotly.graph_objects as go
 from os.path import join as pjoin
+from scipy.stats import norm
 
 
 def get_file_list(rpath):
@@ -163,36 +166,6 @@ def align_behavior_frames(data, time, plot_frame_usage=False):
         fig.show(config={"scrollZoom": True})
 
     return lined_up_timeframes
-
-
-def load_and_align_behavior(dpath, mouse, date, timestamp, session = '20min', sampling_rate=1 / 15):
-    """
-    Parameters:
-    ==========
-    dpath : str
-        directory path
-    mouse : str
-        name of the mouse (e.g. 'mc01')
-    date : str
-        date of session
-    timestamp : str
-        timestamp associated with session
-    session : str
-        one of ['20min'], may incorporate other options if length of sessions decrease from 20min
-    """
-    # create time vector based on expected length of session
-    if "20min" in session:
-        frame_count = (
-            20 * 60 / sampling_rate
-        )  # 20min x 60sec/min / sampling_rate (usually 1/15 because of temporal downsampling during Minian processing)
-    else:
-        raise Exception(
-            "Invalid 'session' argument. Must be one of: ['20min']"
-        )
-    time = np.arange(0, frame_count * sampling_rate, sampling_rate)
-    ## Load behavior data
-    rpath = pjoin(dpath, '/Data/{}/{}/{}/circle_track.csv'.format(mouse, date, timestamp))
-    mouse_behavior = pd.read_csv(rpath)
     
     
 def normalize_timestamp(data):
@@ -205,8 +178,9 @@ def normalize_timestamp(data):
         data : pandas.DataFrame
             timestamp column converted to seconds
     """
-    time = float(data.timestamp.loc[data.event == 'START'])
-    data.timestamp = (data.timestamp - time)
+    time = data.timestamp.loc[data.event == 'START'].reset_index()
+    start_time = time.timestamp[0]
+    data.timestamp = (data.timestamp - start_time)
     return data
 
 
@@ -410,3 +384,191 @@ def direction_percentage(location_data):
     ## Convert to dataframe
     direction_percentage = pd.DataFrame(direction_percentage)
     return direction_percentage
+
+
+def set_track_and_maze(track, maze_number):
+    """
+    Creates a dataframe of the angular positions of all ports in a specified maze. Needed for dprime calculations.
+    Args:
+        track : str
+            determines what circle track setup you are using; options are one of ['condos', 'clear']
+        maze_number: str
+            determines what maze you are using; options are one of ['maze1', 'maze2', 'maze3', 'maze4'] for condos
+            one of ['maze1'] for track == 'clear' (since there is only one maze)
+    Returns:
+        reward_ports : pandas.DataFrame
+            pd.DataFrame of each ports angular position
+    """
+    if track == 'condos':
+        ## Set angular positions of all ports from the condos (4 tracks Brian and I built)
+        reward_ports = pd.DataFrame({'reward1': [90, 90, 90, 90], 'reward2': [20, 25, 27, 45],
+                                     'reward3': [340, 347, 345, 0], 'reward4': [296, 305, 302, 315],
+                                     'reward5': [253, 265, 259, 270], 'reward6': [210, 220, 215, 225],
+                                     'reward7': [169, 178, 171, 180], 'reward8': [128, 135, 131, 135]})
+        ## Name index based on maze
+        reward_ports.index = ['maze1', 'maze2', 'maze3', 'maze4']
+    elif track == 'clear':
+        ## Set angular positions of all ports from clear circle track (Phil's original design)
+        reward_ports = pd.DataFrame({'reward1': [], 'reward2': [], 'reward3': [], 'reward4': [],
+                                     'reward5': [], 'reward6': [], 'reward7': [], 'reward8': []})
+        ## Name index based on maze; only one maze
+        reward_ports.index = ['maze1']
+    else:
+        raise Exception("No track set! Must be either 'condos' or 'clear'!")
+    ## Choose reward ports for specified maze
+    if maze_number == 'maze1':
+        ports = reward_ports.loc[reward_ports.index == 'maze1']
+    elif maze_number == 'maze2':
+        ports = reward_ports.loc[reward_ports.index == 'maze2']
+    elif maze_number == 'maze3':
+        ports = reward_ports.loc[reward_ports.index == 'maze3']
+    elif maze_number == 'maze4':
+        ports = reward_ports.loc[reward_ports.index == 'maze4']
+    else:
+        raise Exception("No maze set! Must be either ['maze1', 'maze2', 'maze3', 'maze4']")
+    ## Return output
+    return ports
+
+
+def align_behavior_frames(df, time, plot_frame_usage=False):
+    """
+    Takes timestamps matrix associated with a behavior recording and a regularly spaced time vector the expected length of the session. 
+    For each timeframe in 'time', the closest frame from timestamp column is acquired. 
+    Args:
+        data : pandas.DataFrame
+            minian timestamps from preprocessing; argument set in load_and_align_minian function
+        time : list
+            regularly spaced time vector the expected length of the session; argument set in load_and_align_minian function
+        plot_frame_usage : boolean
+            if True, creates a plot of frame usage; by default set to False
+    Returns:
+        lined_up_timeframes : list
+            vector of lined up frames to use to align recording to the time vector.
+    """
+    arg_mins = [np.abs(df['timestamp'] - (t)).argmin() for t in time]
+    lined_up_timeframes = np.array(df.frame_number.loc[arg_mins])
+    ## Plot frame usage
+    if plot_frame_usage:
+        duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scattergl(
+                x=duplicated_timeframes[0],
+                y=duplicated_timeframes[1],
+                mode="lines+markers",
+                marker_size=5,
+            )
+        )
+        fig.update_layout(
+            template="simple_white",
+            xaxis_title="Time (ms)",
+            yaxis_title="Frequency",
+            title_text="Number of times each miniscope frame was re-used",
+        )
+        fig.show(config={"scrollZoom": True})
+    ## Return data frame
+    return lined_up_timeframes
+
+
+def load_and_align_behavior(path, mouse, date, session = '20min', sampling_rate = 1/35, downsample = True, downsample_factor = 2, plot_frame_usage = False):
+    """
+    Args:
+        path : str
+            directory path
+        mouse : str
+            name of the mouse (e.g. 'mc01')
+        date : str
+            date of session
+        session : str
+            one of ['20min', '30min']; by default '20min'
+        sampling_rate : float
+            sampling rate of behavior; by default 1/35 (35 frames per second)
+        downsample : boolean
+            determines whether or not you want to downsample the data; by default True
+        downsample_factor : float
+            what factor you want to downsample your data by; by default 2
+        plot_frame_usage : boolean
+            creates a plot showing the number of times a frame was used; by default False
+    Returns:
+        aligned_behavior: pandas.DataFrame
+            pd.DataFrame with the columns timestamp, x_pos, y_pos, a_pos, and frame_number
+    """
+    # create time vector based on expected length of session
+    if session == '20min':
+        frame_count = (
+            20 * 60 / sampling_rate
+        )  # 20min x 60sec/min / sampling_rate 
+    elif session == '30min':
+        frame_count = (
+            30 * 60 / sampling_rate
+        )  # 30min x 60sec/min / sampling_rate
+    else:
+        raise Exception(
+            "Invalid 'session' argument. Must be one of: ['20min', '30min']"
+        )
+    time = np.arange(0, frame_count * sampling_rate, sampling_rate)
+    # load the specified type of neural activity
+    rpath = pjoin(path, 'Data/{}/{}/'.format(mouse, date))
+    timestamp = os.listdir(rpath) ## get timestamp associated with that day
+    rpath = pjoin(rpath, timestamp[0]) 
+    ## Read circle_track.csv
+    data = pd.read_csv(pjoin(rpath, 'circle_track.csv'))
+    ## Crop data
+    cropped_data = crop_data(data)
+    ## Normalize timestamp
+    norm_data = normalize_timestamp(cropped_data)
+    ## Get location
+    location = norm_data.loc[(norm_data.event == 'LOCATION') | (norm_data.event == 'START')]
+    location.reset_index(drop = True)
+    ## Set START to next frame's x,y,a value
+    location.data.iloc[0] = location.data.iloc[1]
+    ## Initialize empty dictionary
+    location_data = {'timestamp': [], 'x_pos': [], 'y_pos': [], 'a_pos': []}
+    for i in range(len(location)):
+        location_data['timestamp'].append(location.timestamp.iloc[i])
+        location_data['x_pos'].append(float(re.search(r'X([0-9]+)', location.data.iloc[i]).group(1)))
+        location_data['y_pos'].append(float(re.search(r'Y([0-9]+)', location.data.iloc[i]).group(1)))
+        location_data['a_pos'].append(float(re.search(r'A([0-9]+)', location.data.iloc[i]).group(1)))
+    ## Convert to pd.DataFrame
+    df = pd.DataFrame(location_data)
+    df['frame_number'] = range(0, len(df))
+    ## Get aligned frames
+    lined_up_timeframes = align_behavior_frames(df, time, plot_frame_usage = plot_frame_usage)
+    ## Select aligned frames
+    aligned_behavior = df.loc[lined_up_timeframes]
+    ## Downsample if minian output is downsampled
+    if downsample:
+        aligned_behavior = aligned_behavior[::downsample_factor]
+    return aligned_behavior
+    
+
+
+def import_mouse_behavior_data(path, mouse, key_file, session):
+    """
+    Import all data for one mouse. Requires a yml file that contains session identifier keys.
+    Args:
+        path : str
+            path to experiment directory
+        mouse : str
+            mouse name
+        key_file : str
+            name of yaml file that contains mouse as key and inner dictionary with context as key and date as value (e.g. A1 : 2022_06_08)
+        session : str
+            one of ['20min', '30min']
+    Returns:
+        sessions : dict
+            key is context, value is xarray.DataArray from minian output
+    """
+    ## Initialize sessions
+    sessions = {}
+    ## Load keys
+    key_path = pjoin(path, key_file)
+    with open(key_path, 'r') as stream:
+        data_loaded = yaml.safe_load(stream)
+    ## Select keys for a specific mouse
+    keys = data_loaded[mouse]
+    dpath = pjoin(path, 'Data/')
+    dpath = pjoin(dpath, '{}/'.format(mouse))
+    for date in os.listdir(dpath):
+        sessions[list(keys.keys())[list(keys.values()).index([date])]] = ctb.load_and_align_behavior(path, mouse, date, session = session)
+    return sessions
