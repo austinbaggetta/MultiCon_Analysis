@@ -90,7 +90,7 @@ def spatial_bin(
         return H, xedges, yedges, bins
 
 
-def consecutive_dist(aligned_behavior, axis=0, zero_pad=False):
+def consecutive_dist(x, axis=0, zero_pad=False):
     """
     Calculates the the distance between consecutive points in a vector.
     Args:
@@ -99,19 +99,15 @@ def consecutive_dist(aligned_behavior, axis=0, zero_pad=False):
     Returns:
         dists: array-like, distances
     """
-    ## Take x_pos and y_pos
-    xy = np.array([aligned_behavior.x_pos, aligned_behavior.y_pos])
-    ## Swap axes from (2, N) to (N, 2)
-    xy = np.swapaxes(xy, 0, 1)
     ## Calculate differences
-    delta = np.diff(xy, axis=axis)
+    delta = np.diff(x, axis=axis)
     dists = np.hypot(delta[:, 0], delta[:, 1])
     if zero_pad:
         dists = np.insert(dists, 0, 0)
     return dists
 
 
-def cart2pol(aligned_behavior):
+def cart2pol(x, y):
     """
     Cartesian to polar coordinates. For linearizing circular trajectory.
     Args:
@@ -121,12 +117,56 @@ def cart2pol(aligned_behavior):
         (phi, rho): tuple
             Angle (linearized distance) and radius (distance from center).
     """
-    x = aligned_behavior.x_pos
-    y = aligned_behavior.y_pos
     ## Calculate rho and phi
     rho = np.sqrt(x ** 2 + y ** 2)
     phi = np.arctan2(y, x)
     return (phi, rho)
+
+
+def define_field_bins(placefield, field_threshold=0.5):
+    field_bins = np.where(placefield >= max(placefield) * field_threshold)[0]
+
+    return field_bins
+
+
+def spatial_information(tuning_curve, occupancy):
+    """
+    Calculate spatial information in one neuron's activity.
+    :parameters
+    ---
+    tuning_curve: array-like
+        Activity (S or binary S) per spatial bin.
+    occupancy: array-like
+        Time spent in each spatial bin.
+    :return
+    ---
+    spatial_bits_per_spike: float
+        Spatial bits per spike.
+    """
+    # Make 1-D.
+    tuning_curve = tuning_curve.flatten()
+    occupancy = occupancy.flatten()
+
+    # Only consider activity in visited spatial bins.
+    tuning_curve = tuning_curve[occupancy > 0]
+    occupancy = occupancy[occupancy > 0]
+
+    # Find rate and mean rate.
+    rate = tuning_curve / occupancy
+    mrate = tuning_curve.sum() / occupancy.sum()
+
+    # Get occupancy probability.
+    prob = occupancy / occupancy.sum()
+
+    # Handle log2(0).
+    index = rate > 0
+
+    # Spatial information formula.
+    bits_per_spk = sum(
+        prob[index] * (rate[index] / mrate) * np.log2(rate[index] / mrate)
+    )
+
+    return bits_per_spk
 
 
 class PlaceFields:
@@ -139,7 +179,7 @@ class PlaceFields:
         bin_size=20,
         circular=False,
         linearized=False,
-        shuffle_test=False,
+        shuffle_test=True,
         fps=None,
         velocity_threshold=10,
         nbins=None,
@@ -173,6 +213,14 @@ class PlaceFields:
         if bin_size is not None and nbins is not None:
             print('Warning! Both bin_size and nbins were assigned values. '
                   'nbins will take priority. Proceed with caution.')
+        x_extrema = [min(x), max(x)]
+        y_extrema = [min(y), max(y)]
+        ## Calculate bins 
+        if nbins is None:
+            nbins = int(np.round(np.diff(x_extrema)[0] / bin_size))
+        else:
+            nbins = nbins
+        ## Set data and meta data
         self.data = {
             "t": t,
             "x": x,
@@ -218,24 +266,35 @@ class PlaceFields:
             angles += np.pi / 2
             self.data['x'] = np.mod(angles, 2 * np.pi)
             self.data['y'] = np.zeros_like(self.data['x'])
-
-        # Make occupancy maps and place fields.
+        
+        ## Get occupancy bins
         (
             self.data["occupancy_map"],
             self.data["occupancy_bins"],
         ) = self.make_occupancy_map(show_plot=False)
-        self.data["placefields"] = self.make_all_place_fields(normalize=False)
-        self.data["placefields_normalized"] = self.make_all_place_fields(normalize=True)
-        self.data["spatial_info"] = [
-            spatial_information(pf, self.data["occupancy_map"])
-            for pf in self.data["placefields"]
-        ]
+
+        ## Calculate all place fields
+        self.data['placefields'] = self.make_all_place_fields()
+
+        ## Calculate normalized by occupancy place fields
+        self.data['normalized_placefields'] = self.make_all_place_fields(normalize = True)
+
+        ## Calculate spatial information
+        self.data['spatial_information'] = []
+        for pf in self.data['placefields']:
+            data = spatial_information(pf, self.data['occupancy_map'])
+            self.data['spatial_information'].append(data)
+
+        ## Find place field centers
         self.data["placefield_centers"] = self.find_pf_centers()
+
+        ## Significance test
         if shuffle_test:
             (
                 self.data["spatial_info_pvals"],
                 self.data["spatial_info_z"],
             ) = self.assess_spatial_sig_parallel()
+
 
     def get_fps(self):
         """
@@ -247,108 +306,10 @@ class PlaceFields:
 
         # Inter-frame interval in milliseconds.
         mean_interval = np.mean(interframe_intervals)
-        fps = round(1 / (mean_interval / 1000))
+        fps = round(1 / (mean_interval))
 
         return int(fps)
 
-    def make_all_place_fields(self, normalize=False):
-        """
-        Compute the spatial rate maps of all neurons.
-        :return:
-        """
-        pfs = []
-        for neuron in range(self.data["neural"].shape[0]):
-            pfs.append(self.make_place_field(neuron, show_plot=False, normalize_by_occ=normalize))
-
-        return np.asarray(pfs)
-
-    def make_snake_plot(self, order="sorted", neurons="all", normalize=True):
-        if neurons == "all":
-            neurons = np.asarray([int(n) for n in range(self.data["n_neurons"])])
-        pfs = self.data["placefields_normalized"][neurons]
-
-        if order == "sorted":
-            order = np.argsort(self.data["placefield_centers"][neurons])
-
-        if normalize:
-            pfs /= np.nanmax(pfs, axis=1)[:, np.newaxis]
-
-        fig, ax = plt.subplots()
-        ax.imshow(pfs[order])
-        ax.axis('tight')
-        ax.set_xlabel('Position')
-        ax.set_ylabel('Neuron #')
-
-        return fig, ax
-
-    def find_pf_centers(self):
-        centers = [np.argmax(pf) for pf in self.data["placefields_normalized"]]
-
-        return np.asarray(centers)
-
-    def assess_spatial_sig(self, neuron, n_shuffles=500):
-        shuffled_SIs = []
-        for i in range(n_shuffles):
-            shuffled_pf = self.make_place_field(neuron, show_plot=False, normalize_by_occ=False, shuffle=True)
-            shuffled_SIs.append(
-                spatial_information(shuffled_pf, self.data["occupancy_map"])
-            )
-
-        shuffled_SIs = np.asarray(shuffled_SIs)
-        p_value = np.sum(self.data["spatial_info"][neuron] < shuffled_SIs) / n_shuffles
-
-        SI_z = (self.data["spatial_info"][neuron] - np.mean(shuffled_SIs)) / np.std(
-            shuffled_SIs
-        )
-
-        return p_value, SI_z
-
-    def assess_spatial_sig_parallel(self):
-        print("Doing shuffle tests. This may take a while.")
-        neurons = tqdm([n for n in range(self.data["n_neurons"])])
-        n_cores = mp.cpu_count()
-        # with futures.ProcessPoolExecutor() as pool:
-        #     results = pool.map(self.assess_spatial_sig, neurons)
-        results = Parallel(n_jobs=n_cores)(
-            delayed(self.assess_spatial_sig)(i) for i in neurons
-        )
-
-        pvals, SI_z = zip(*results)
-
-        return np.asarray(pvals), np.asarray(SI_z)
-
-    def plot_dots(
-        self, neuron, std_thresh=2, pos_color="k", transient_color="r", ax=None
-    ):
-        """
-        Plots a dot show_plot. Position samples with suprathreshold activity
-        dots overlaid.
-        :parameters
-        ---
-        neuron: int, neuron index in neural_data.
-        std_thresh: float, number of standard deviations above the mean
-            to show_plot "spike" dot.
-        pos_color: color-like, color to make position samples.
-        transient_color: color-like, color to make calcium transient-associated
-            position samples.
-        """
-        # Define threshold.
-        thresh = np.mean(self.data["neural"][neuron]) + std_thresh * np.std(
-            self.data["neural"][neuron]
-        )
-        supra_thresh = self.data["neural"][neuron] > thresh
-
-        # Plot.
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        ax.scatter(self.data["x"], self.data["y"], s=3, c=pos_color)
-        ax.scatter(
-            self.data["x"][supra_thresh],
-            self.data["y"][supra_thresh],
-            s=3,
-            c=transient_color,
-        )
 
     def make_occupancy_map(self, show_plot=True, ax=None):
         """
@@ -375,6 +336,7 @@ class PlaceFields:
             ax.imshow(occupancy_map, origin="lower")
 
         return occupancy_map, occupancy_bins
+    
 
     def make_place_field(
         self, neuron, show_plot=True, normalize_by_occ=False, ax=None, shuffle=False
@@ -422,3 +384,113 @@ class PlaceFields:
                 ax.imshow(pf, origin="lower")
 
         return pf
+
+
+    def make_all_place_fields(self, normalize=False):
+        """
+        Compute the spatial rate maps of all neurons.
+        :return:
+        """
+        pfs = []
+        for neuron in range(self.data["neural"].shape[0]):
+            pfs.append(self.make_place_field(neuron, show_plot=False, normalize_by_occ=normalize))
+
+        return np.asarray(pfs)
+
+    
+    def find_pf_centers(self, normalize = False):
+        if normalize:
+            centers = [np.argmax(pf) for pf in self.data["normalized_placefields"]]
+        else:
+            centers = [np.argmax(pf) for pf in self.data["placefields"]]
+
+        return np.asarray(centers)
+    
+
+    def make_snake_plot(self, order="sorted", neurons="all", normalize=True):
+        if neurons == "all":
+            neurons = np.asarray([int(n) for n in range(self.data["n_neurons"])])
+        pfs = self.data["normalized_placefields"][neurons]
+
+        if order == "sorted":
+            order = np.argsort(self.data["placefield_centers"][neurons])
+
+        if normalize:
+            pfs /= np.nanmax(pfs, axis=1)[:, np.newaxis]
+
+        fig, ax = plt.subplots()
+        ax.imshow(pfs[order])
+        ax.axis('tight')
+        ax.set_xlabel('Position')
+        ax.set_ylabel('Neuron #')
+
+        return fig, ax
+
+
+    def assess_spatial_sig(self, neuron, n_shuffles=500):
+        shuffled_SIs = []
+        for i in range(n_shuffles):
+            shuffled_pf = self.make_place_field(neuron, show_plot=False, normalize_by_occ=False, shuffle=True)
+            shuffled_SIs.append(
+                spatial_information(shuffled_pf, self.data["occupancy_map"])
+            )
+
+        shuffled_SIs = np.asarray(shuffled_SIs)
+        p_value = np.sum(self.data["spatial_information"][neuron] < shuffled_SIs) / n_shuffles
+
+        SI_z = (self.data["spatial_information"][neuron] - np.mean(shuffled_SIs)) / np.std(
+            shuffled_SIs
+        )
+
+        return p_value, SI_z
+
+
+    def assess_spatial_sig_parallel(self):
+        print("Doing shuffle tests. This may take a while.")
+        neurons = tqdm([n for n in range(self.data["n_neurons"])])
+        n_cores = mp.cpu_count()
+        # with futures.ProcessPoolExecutor() as pool:
+        #     results = pool.map(self.assess_spatial_sig, neurons)
+        results = Parallel(n_jobs=n_cores)(
+            delayed(self.assess_spatial_sig)(i) for i in neurons
+        )
+
+        pvals, SI_z = zip(*results)
+
+        return np.asarray(pvals), np.asarray(SI_z)
+    
+
+    # def plot_dots(
+    #     self, neuron, std_thresh=2, pos_color="k", transient_color="r", ax=None
+    # ):
+    #     """
+    #     Plots a dot show_plot. Position samples with suprathreshold activity
+    #     dots overlaid.
+    #     :parameters
+    #     ---
+    #     neuron: int, neuron index in neural_data.
+    #     std_thresh: float, number of standard deviations above the mean
+    #         to show_plot "spike" dot.
+    #     pos_color: color-like, color to make position samples.
+    #     transient_color: color-like, color to make calcium transient-associated
+    #         position samples.
+    #     """
+    #     # Define threshold.
+    #     thresh = np.mean(self.data["neural"][neuron]) + std_thresh * np.std(
+    #         self.data["neural"][neuron]
+    #     )
+    #     supra_thresh = self.data["neural"][neuron] > thresh
+
+    #     # Plot.
+    #     if ax is None:
+    #         fig, ax = plt.subplots()
+
+    #     ax.scatter(self.data["x"], self.data["y"], s=3, c=pos_color)
+    #     ax.scatter(
+    #         self.data["x"][supra_thresh],
+    #         self.data["y"][supra_thresh],
+    #         s=3,
+    #         c=transient_color,
+    #     )
+
+    
