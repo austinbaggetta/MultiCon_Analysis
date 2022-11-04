@@ -463,14 +463,14 @@ def align_behavior_frames(df, time, plot_frame_usage=False):
             template="simple_white",
             xaxis_title="Time (ms)",
             yaxis_title="Frequency",
-            title_text="Number of times each miniscope frame was re-used",
+            title_text="Number of times each behavior frame was re-used",
         )
         fig.show(config={"scrollZoom": True})
     ## Return data frame
     return lined_up_timeframes
 
 
-def load_and_align_behavior(path, mouse, date, session = '20min', sampling_rate = 1/35, downsample = True, downsample_factor = 2, plot_frame_usage = False):
+def load_and_align_behavior(path, mouse, date, session = '20min', sampling_rate = 1/15, downsample = False, downsample_factor = 2, plot_frame_usage = False):
     """
     Args:
         path : str
@@ -482,9 +482,9 @@ def load_and_align_behavior(path, mouse, date, session = '20min', sampling_rate 
         session : str
             one of ['20min', '30min']; by default '20min'
         sampling_rate : float
-            sampling rate of behavior; by default 1/35 (35 frames per second)
+            sampling rate of behavior; by default 1/15 (15 frames per second) because calcium imaging data is downsampled to 15fps
         downsample : boolean
-            determines whether or not you want to downsample the data; by default True
+            determines whether or not you want to downsample the data; by default False
         downsample_factor : float
             what factor you want to downsample your data by; by default 2
         plot_frame_usage : boolean
