@@ -45,7 +45,7 @@ def open_minian(dpath, post_process=None, return_dict=False):
     return ds
 
 
-def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down_sample = True, down_sample_factor = 2, ttl = False):
+def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down_sample = True, down_sample_factor = 2, ttl_darkness = False):
     """
     Takes timestamps matrix associated with a miniscope recording and a regularly spaced time vector the expected length of the session. 
     For each timeframe in 'time', the closest frame from minian_timestamps is acquired.
@@ -61,8 +61,8 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down
             whether or not minian was downsampled during pre-processing; by default True
         downsample_factor: float
             what factor the data was downsampled by
-        ttl: boolean
-            whether or not a ttl was used to trigger miniscope imaging
+        ttl_darkness: boolean
+            whether or not a ttl had dark frames in the beginning
     Returns:
         lined_up_timeframes : list
             vector of lined up frames to use to align recording to the time vector.
@@ -71,7 +71,7 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down
     if down_sample:
         minian_timestamps = minian_timestamps[::down_sample_factor]
     ## If ttl triggered, first 5 frames are dark, so exclude them
-    if ttl:
+    if ttl_darkness:
         minian_timestamps[4:]
     ## Determine which frame is closest to the ideal time vector
     arg_mins = [np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin() for t in time]
