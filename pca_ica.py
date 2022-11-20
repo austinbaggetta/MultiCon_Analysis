@@ -18,6 +18,7 @@ from tqdm import tqdm
 from scipy.stats import pearsonr, spearmanr, zscore
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy.matlib
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -421,7 +422,6 @@ def get_transient_timestamps(
     return event_times, event_mags, bool_arr
 
 ####################### AUSTIN'S CODE STARTS HERE #######################
-
 
 def calculate_ensemble_correlation(assemblies_sess1, assemblies_sess2, test = 'pearson'):
     """
