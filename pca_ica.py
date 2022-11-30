@@ -18,6 +18,8 @@ from tqdm import tqdm
 from scipy.stats import pearsonr, spearmanr, zscore
 import plotly.express as px
 import plotly.graph_objects as go
+import pymannkendall as mk
+from statsmodels.stats.multitest import multipletests
 import numpy.matlib
 
 __author__ = "Vítor Lopes dos Santos"
@@ -421,9 +423,74 @@ def get_transient_timestamps(
 
     return event_times, event_mags, bool_arr
 
-####################### AUSTIN'S CODE STARTS HERE #######################
 
-def calculate_ensemble_correlation(assemblies_sess1, assemblies_sess2, test = 'pearson'):
+def make_bins(data, samples_per_bin, axis=1):
+    """
+    Make bins determined by how many samples per bin.
+    :parameters
+    ---
+    data: array-like
+        Data you want to bin.
+    samples_per_bin: int
+        Number of values per bin.
+    axis: int
+        Axis you want to bin across.
+    """
+    try:
+        length = data.shape[axis]
+    except:
+        length = data.shape[0]
+
+    bins = np.arange(samples_per_bin, length, samples_per_bin)
+
+    return bins.astype(int)
+
+
+def bin_transients(data, bin_size_in_seconds, fps=15, non_binary=False):
+    """
+    Bin data then sum the number of "S" (deconvolved S matrix)
+    within each bin.
+    :parameters
+    ---
+    data: xarray, or numpy array
+        Minian output (S matrix, usually).
+    bin_size_in_seconds: int
+        How big you want each bin, in seconds.
+    fps: int
+        Sampling rate (default takes into account 2x downsampling
+        from minian).
+    :return
+    ---
+    summed: (cell, bin) array
+        Number of S per cell for each bin.
+    """
+    # Convert input into array
+    if type(data) is not np.ndarray:
+        data = np.asarray(data)
+    #data = np.round(data, 3)
+
+    # Group data into bins.
+    bins = make_bins(data, bin_size_in_seconds * fps)
+    binned = np.split(data, bins, axis=1)
+
+    # Sum the number of "S" per bin.
+    if non_binary:
+        summed = [np.sum(bin, axis=1) for bin in binned]
+    else:
+        summed = [np.sum(bin > 0, axis=1) for bin in binned]
+
+    return np.vstack(summed).T
+
+
+def nan_array(size):
+    arr = np.empty(size)
+    arr.fill(np.nan)
+
+    return arr
+
+####################### AUSTIN'S CODE STARTS HERE ############################
+
+def calculate_ensemble_correlation_shared(assemblies_sess1, assemblies_sess2, test = 'pearson'):
     """
     Used to calculate the pearson/spearman correlation or cosine similarity between two sessions.
     Requires cells to be shared between two sessions.
@@ -572,19 +639,61 @@ def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percenti
     return matched
 
 
-def assemblies_between_sessions(path, mouse, neural_type = 'spikes'):
-    """
-    Used to identify cell assemblies between all pairwise session comparisons.
+def define_ensemble_trends(activations, x_variable, x_bin_size = 1, zscored = True, alpha = 'sidak'):
+    """"
+    Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
+    Use the Mann Kendall test to find trends.
+
     Args:
-        path : str
-            experiment directory
-        mouse: str
-            name of the mouse (e.g. 'mc01')
-        neural_type: str
-            one of ['traces', 'spikes', 'smoothed']
-    Returns:
-    
+        activations : np.array
+            Values from data['activations'], which is determined from the find_assemblies function.
+        x_bin_size : int
+            If x == 'time', bin size in seconds
+            If x == 'trial', bin size in trials
+        zscored : boolean
+            Determines whether or not to zscore activations. By default True.
     """
+    ## zscore data
+    if zscored:
+        data = zscore(activations, nan_policy = 'omit', axis = 1)
+    else:
+        data = activations
+    ## Bin by time, sum activation every few seconds
+    if x_variable == 'time':
+        binned_activations = []
+        for unit in data:
+            binned_activations.append(bin_transients(unit[np.newaxis], x_bin_size, fps = 15, non_binary = True)[0])
+        
+        binned_activations = np.vstack(binned_activations)
+
+    ## Bin by trials, sum activation every n trials, coming soon!!!!
+
+    ## Group ensembles into increasing, decreasing, or no trend
+    trends = {key: [] for key in ['no trend', 'decreasing', 'increasing']}
+    slopes, tau = nan_array(data.shape[0]), nan_array(data.shape[0])
+    ## If using sidak
+    if type(alpha) is str:
+        pvals = []
+        pval_thresh = 0.005
+        for i, unit in enumerate(binned_activations):
+            mk_test = mk.original_test(unit, alpha = 0.05)
+            pvals.append(mk_test.p)
+
+            slopes[i] = mk_test.slope
+            tau[i] = mk_test.Tau
+        ## Correct pvalues for multiple comparisons
+        corrected_pvals = multipletests(pvals, alpha = pval_thresh, method = alpha)[1]
+        ## Loop through tuples of combined corrected pvalues and slopes
+        for i, (corr_pval, slope) in enumerate(zip(corrected_pvals, slopes)):
+            if corr_pval < pval_thresh:
+                direction = 'increasing' if slope > 0 else 'decreasing'
+                trends[direction].append(i)
+            else:
+                trends['no trend'].append(i)
+        return trends, binned_activations, slopes, tau
+
+
+    
 
         
        
