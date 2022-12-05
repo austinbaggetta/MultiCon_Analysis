@@ -99,7 +99,7 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down
     return lined_up_timeframes
 
 
-def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample = False, downsample_factor=2, plot_frame_usage = True):
+def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample_further = False, downsample_factor=2, plot_frame_usage = True, frames_per_file = 1000):
     """
     Loads minian data and aligns the data to a regularly spaced time vector.
     Args:
@@ -123,43 +123,45 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
             if you want to further downsample from 15 fps
         downsample_factor : int
             factor by which you want to downsample by
+        frames_per_file : int
+            how many frames are in each .avi file
     Returns:
         neural_activity : xarray.DataArray
             can be aligned spike or calcium trace data
     """
-    # Create time vector based on expected length of session
-    if session == '20min':
-        frame_count = (
-            20 * 60 / sampling_rate
-        )  # 20min x 60sec/min / sampling_rate 
-    elif session == '30min':
-        frame_count = (
-            30 * 60 / sampling_rate
-        )  # 20min x 60sec/min / sampling_rate 
-    else:
-        raise Exception(
-            "Invalid 'session' argument. Must be one of: ['20min']"
-        )
-    time = np.arange(0, frame_count * sampling_rate, sampling_rate)
-    # load the specified type of neural activity
+    ## Load the specified type of neural activity
     rpath = pjoin(path, 'Results/{}/{}/'.format(mouse, date))
     timestamp = os.listdir(rpath) ## get timestamp associated with that day
     rpath = pjoin(rpath, timestamp[0]) 
     rpath = pjoin(rpath, 'minian') ## navigate to .zarr files
     mouse_minian = open_minian(rpath, return_dict=False)
-    if neural_type == "traces":
-        neural_activity = mouse_minian["C"]
-    elif (neural_type == "spikes") or (neural_type == "smoothed"):
-        neural_activity = mouse_minian["S"]
+    if neural_type == 'traces':
+        neural_activity = mouse_minian['C']
+    elif (neural_type == 'spikes') or (neural_type == 'smoothed'):
+        neural_activity = mouse_minian['S']
     else:
         raise Exception(
             "Not a valid 'neural_type'; must be one of ['traces', 'spikes', 'smoothed']."
         )
+    ## Set miniscope path as tpath
     tpath = pjoin(path, 'Data/{}/{}/{}/miniscope'.format(mouse, date, timestamp[0]))
     minian_timestamps = pd.read_csv(tpath + "/timeStamps.csv")
+    ## Create an array that contains the number of avi files
+    miniscope_path_items = np.array(os.listdir(tpath))
+    avi_names = miniscope_path_items[['.avi' in file for file in miniscope_path_items]]
+    ## Create time vector based on frame count, which is number of avi files * 1000 (1000 frames per video), which is subtracted from total number of frames there should be based on session
+    if session == '20min':
+        frame_count = (len(avi_names) * (frames_per_file / downsample_factor))
+    elif session == '30min':
+        frame_count = (len(avi_names) * (frames_per_file / downsample_factor))
+    else:
+        raise Exception(
+            "Invalid 'session' argument. Must be one of: ['20min', '30min']"
+        )
+    time = np.arange(0, frame_count * sampling_rate, sampling_rate)
     ## If you downsampled during minian processing, can change downsample_factor
     lined_up_timeframes = align_miniscope_frames(minian_timestamps, time, plot_frame_usage = plot_frame_usage)
-    if downsample:
+    if downsample_further:
         lined_up_timeframes = lined_up_timeframes[::downsample_factor]
     ## Select frames based on line-up timeframes
     neural_activity = neural_activity.sel(frame=lined_up_timeframes)
@@ -170,7 +172,7 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
     return neural_activity
 
 
-def import_mouse_neural_data(path, mouse, key_file, neural_type = 'spikes'):
+def import_mouse_neural_data(path, mouse, key_file, neural_type = 'spikes', plot_frame_usage = False):
     """
     Import all data for one mouse. Requires a yml file that contains session identifier keys.
     Args:
@@ -197,7 +199,7 @@ def import_mouse_neural_data(path, mouse, key_file, neural_type = 'spikes'):
     dpath = pjoin(path, 'Results/')
     dpath = pjoin(dpath, '{}/'.format(mouse))
     for date in os.listdir(dpath):
-        sessions[list(keys.keys())[list(keys.values()).index([date])]] = ctn.load_and_align_minian(path, mouse, date, neural_type = neural_type)
+        sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_minian(path, mouse, date, neural_type = neural_type, plot_frame_usage = plot_frame_usage)
     return sessions
 
 
