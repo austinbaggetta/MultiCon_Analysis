@@ -639,7 +639,7 @@ def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percenti
     return matched
 
 
-def define_ensemble_trends(activations, x_variable, x_bin_size = 1, zscored = True, alpha = 'sidak'):
+def define_ensemble_trends(activations, x_variable, z_threshold = None, x_bin_size = 1, zscored = True, alpha = 'sidak'):
     """"
     Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
     Use the Mann Kendall test to find trends.
@@ -658,10 +658,19 @@ def define_ensemble_trends(activations, x_variable, x_bin_size = 1, zscored = Tr
         data = zscore(activations, nan_policy = 'omit', axis = 1)
     else:
         data = activations
+
+    ## Binarize activations
+    activity = np.zeros_like(data)
+    if z_threshold is not None:
+        for i, unit in enumerate(data):
+            activity[i, unit > z_threshold] = unit[unit > z_threshold]
+    else:
+        activity = data
+
     ## Bin by time, sum activation every few seconds
     if x_variable == 'time':
         binned_activations = []
-        for unit in data:
+        for unit in activity:
             binned_activations.append(bin_transients(unit[np.newaxis], x_bin_size, fps = 15, non_binary = True)[0])
         
         binned_activations = np.vstack(binned_activations)
@@ -670,7 +679,7 @@ def define_ensemble_trends(activations, x_variable, x_bin_size = 1, zscored = Tr
 
     ## Group ensembles into increasing, decreasing, or no trend
     trends = {key: [] for key in ['no trend', 'decreasing', 'increasing']}
-    slopes, tau = nan_array(data.shape[0]), nan_array(data.shape[0])
+    slopes, tau = nan_array(activity.shape[0]), nan_array(activity.shape[0])
     ## If using sidak
     if type(alpha) is str:
         pvals = []
