@@ -179,8 +179,8 @@ def normalize_timestamp(data):
             timestamp column converted to seconds
     """
     time = data.timestamp.loc[data.event == 'START'].reset_index()
-    start_time = time.timestamp[0]
-    data.timestamp = (data.timestamp - start_time)
+    start_time = float(time.timestamp[0])
+    data.timestamp = (pd.to_numeric(data.timestamp) - start_time)
     return data
 
 
@@ -291,7 +291,7 @@ def get_lick_accuracy(file_list, mouse):
     return lick_data
 
 
-def get_location_data(file_list, mouse):
+def get_location_data(file_list, mouse, include_licks = False):
     """
     Get x, y,, and angular position of the mouse across all sessions.
     Args: 
@@ -299,6 +299,8 @@ def get_location_data(file_list, mouse):
             combined file_list and mouse_list from combine function
         mouse : str
             mouse name (e.g. 'mc01')
+        include_licks : boolean
+            if True, will include licks and rewards; by default is false
     Returns:
         location_data : pandas.DataFrame
             pd.DataFrame with columns x_pos, y_pos, a_pos, mouse, day
@@ -306,7 +308,7 @@ def get_location_data(file_list, mouse):
     ## Subset file_list based on mouse
     files = subset_combined(file_list, mouse)
     ## Initialize empty data frame
-    location_data = {'x_pos': [], 'y_pos': [], 'a_pos': [], 'mouse': [], 'day': []}
+    location_data = {'timestamp': [], 'x_pos': [], 'y_pos': [], 'a_pos': [], 'mouse': [], 'day': [], 'lick': [], 'reward': []}
     ## Loop through files
     DayID = 1
     for path in files:
@@ -315,15 +317,23 @@ def get_location_data(file_list, mouse):
         cropped_data = crop_data(data)
         ## Normalize timestamp
         norm_data = normalize_timestamp(cropped_data)
-        ## Get location
-        location = data.loc[data.event == 'LOCATION']
-        ## append to dictionary
-        for i in range(1, len(location)):
-            location_data['x_pos'].append(float(re.search(r'X([0-9]+)', location.data.iloc[i]).group(1)))
-            location_data['y_pos'].append(float(re.search(r'Y([0-9]+)', location.data.iloc[i]).group(1)))
-            location_data['a_pos'].append(float(re.search(r'A([0-9]+)', location.data.iloc[i]).group(1)))
-            location_data['mouse'].append(mouse)
-            location_data['day'].append(DayID)
+        ## Separate positional elements
+        if include_licks:
+            location = norm_data.loc[norm_data.event == 'LOCATION']
+            licks_rewards = norm_data.loc[(norm_data.event == 'LICK') | (norm_data.event == 'REWARD')]
+        else:
+            ## Get location data
+            location = norm_data.loc[norm_data.event == 'LOCATION']
+            ## append to dictionary
+            for i in range(1, len(location)):
+                location_data['timestamp'].append(location.timestamp.iloc[i])
+                location_data['x_pos'].append(float(re.search(r'X([0-9]+)', location.data.iloc[i]).group(1)))
+                location_data['y_pos'].append(float(re.search(r'Y([0-9]+)', location.data.iloc[i]).group(1)))
+                location_data['a_pos'].append(float(re.search(r'A([0-9]+)', location.data.iloc[i]).group(1)))
+                location_data['mouse'].append(mouse)
+                location_data['day'].append(DayID)
+                location_data['lick'].append(False)
+                location_data['reward'].append(False)
         ## Add to DayID
         DayID = DayID + 1
     ## Convert to data frame
@@ -570,5 +580,5 @@ def import_mouse_behavior_data(path, mouse, key_file, session):
     dpath = pjoin(path, 'Data/')
     dpath = pjoin(dpath, '{}/'.format(mouse))
     for date in os.listdir(dpath):
-        sessions[list(keys.keys())[list(keys.values()).index([date])]] = ctb.load_and_align_behavior(path, mouse, date, session = session)
+        sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_behavior(path, mouse, date, session = session)
     return sessions
