@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import yaml
 import os
 import re
 import glob
@@ -553,7 +554,7 @@ def load_and_align_behavior(path, mouse, date, session = '20min', sampling_rate 
     
 
 
-def import_mouse_behavior_data(path, mouse, key_file, session):
+def import_mouse_behavior_data(path, mouse, key_file, session, plot_frame_usage = False):
     """
     Import all data for one mouse. Requires a yml file that contains session identifier keys.
     Args:
@@ -565,6 +566,8 @@ def import_mouse_behavior_data(path, mouse, key_file, session):
             name of yaml file that contains mouse as key and inner dictionary with context as key and date as value (e.g. A1 : 2022_06_08)
         session : str
             one of ['20min', '30min']
+        plot_frame_usage : boolean
+            plots how many times each frame was used in the aligned output; by default false
     Returns:
         sessions : dict
             key is context, value is xarray.DataArray from minian output
@@ -580,5 +583,5 @@ def import_mouse_behavior_data(path, mouse, key_file, session):
     dpath = pjoin(path, 'Data/')
     dpath = pjoin(dpath, '{}/'.format(mouse))
     for date in os.listdir(dpath):
-        sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_behavior(path, mouse, date, session = session)
+        sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_behavior(path, mouse, date, session = session, plot_frame_usage = plot_frame_usage)
     return sessions
