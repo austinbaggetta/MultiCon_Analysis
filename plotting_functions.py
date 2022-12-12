@@ -34,11 +34,22 @@ def dates_to_days(data, start_date, days):
     return df
 
 
-def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = [5, 10, 15, 20], 
+def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
                             line_width = 1.5, boundary_color = 'red', template = 'simple_white', width = 800, height = 800):
     """
     Used to create pairwise comparison heatmaps for all days.
     Args: 
+        data : pandas.DataFrame
+        index : str
+            name of first column you want in your pivot table
+        column : str
+            name of second column to pivot by
+        value : str
+            name of column you want as your values for your pivot table
+        graph : str
+            one of ['overlap', 'activity']
+        boundaries : list
+            list containing days that mark ending of each context, e.g. [5, 10, 15]
     Returns:
         fig : plotly object
     """
@@ -53,14 +64,13 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
                              y = matrix.columns,
                              colorscale = colorscale))
     ## Loop through context boundaries and add red line
-    for boundary in boundaries:
-        fig.add_vline(x=boundary+0.5, line_width=line_width, line_color=boundary_color, opacity=1)
-        fig.add_hline(y=boundary+0.5, line_width=line_width, line_color=boundary_color, opacity=1)  
+    if boundaries is not None:
+        for boundary in boundaries:
+            fig.add_vline(x=boundary+0.5, line_width=line_width, line_color=boundary_color, opacity=1)
+            fig.add_hline(y=boundary+0.5, line_width=line_width, line_color=boundary_color, opacity=1)  
     ## Layout options
     fig.update_layout(template = template, width = width, height = height,
                       xaxis_title = 'Day', yaxis_title = 'Day')
-    fig.update_xaxes(dtick=1)
-    fig.update_yaxes(dtick=1)
     ## Based on what you chose to graph, set title and legend_title
     if graph == 'overlap':
         fig.update_layout(title = {'text': 'Cell Overlap Between Days',
