@@ -21,6 +21,7 @@ import plotly.graph_objects as go
 import pymannkendall as mk
 from statsmodels.stats.multitest import multipletests
 import numpy.matlib
+import pickle
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -700,6 +701,55 @@ def define_ensemble_trends(activations, x_variable, z_threshold = None, x_bin_si
             else:
                 trends['no trend'].append(i)
         return trends, binned_activations, slopes, tau
+
+
+## Calculate fading ensemble percentage
+def calculate_proportions_ensembles(trends):
+    """
+    Calculate the proportion of increasing and decreasing ensembles.
+    Args:
+        trends : dict
+            dictionary where keys are session_ids (e.g. 'Training1') and values are dictionaries with values ['no trend', 'increasing', 'decreasing']
+            trends is output of define_ensemble_trends function
+    Returns:
+        proportion_dict : dict
+            dictionary where keys are session_ids and values are dictionaries containing proportions of increasing/decreasing ensembles
+    """
+    ## Create empty dictionary
+    proportion_dict = {}
+    for key in trends:
+        num_decreasing = len(trends[key]['decreasing'])
+        num_increasing = len(trends[key]['increasing'])
+        total = num_decreasing + num_increasing + len(trends[key]['no trend'])
+        ## Append to dictionary
+        proportion_dict[key] = {'prop_increasing': num_increasing / total, 'prop_decreasing': num_decreasing / total}
+    return proportion_dict
+
+
+def save_detected_ensembles(path, mouse, neural_dict, nullhyp = 'circ', n_shuffles = 500):
+    """
+    This function saves each output from the find_assemblies function above into a pickle file for future use.
+    Args:
+        path : str
+            path to where you want the pickle files to be stored
+        mouse : str
+            mouse name
+        neural_dict : dictionary
+            dictionary where keys are session identifiers (e.g. 'Training1', 'A1', etc) and values are xarray.DataArray
+            output from import_mouse_neural_data from circletrack_neural.py
+        nullhyp : str
+            defines how to generate statistical threshold for assembly detection.
+                'bin' - bin shuffling, will shuffle time bins of each neuron independently
+                'circ' - circular shuffling, will shift time bins of each neuron independently
+                        obs: maintains (virtually) autocorrelations
+                'mp' - Marcenko-Pastur distribution - analytical threshold
+        n_shuffles : float
+            defines how many shuffling controls will be done (n/a if nullhyp is 'mp')
+    """
+    for key in tqdm(neural_dict):
+        assemblies = find_assemblies(neural_dict[key].values, nullhyp = nullhyp, n_shuffles = n_shuffles)
+        with open('{}/assemblies_{}_{}.pickle'.format(path, mouse, key), 'wb') as handle:
+            pickle.dump(assemblies, handle, protocol = pickle.HIGHEST_PROTOCOL)
 
 
     
