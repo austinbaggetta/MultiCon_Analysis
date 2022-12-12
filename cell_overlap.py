@@ -95,3 +95,33 @@ def dates_to_days(data, start_date, days):
         DayID += 1
     df = data.replace(day_dict)
     return df
+
+
+def between_context_overlap(mouse, overlap, session_ids = ['A5', 'B5', 'C5', 'D5', 'R_A5'], session_type = 'pre'):
+    """ 
+    Get the overlap values between specific pairs of sessions.
+    Args:
+        mouse : str
+            name of mouse
+        overlap : pandas.DataFrame
+            pd.DataFrame of cell overlap values determined from calculate_overlap function
+        session_ids : list
+            list of specific sessions you want to get the overlap values for. The function will compare session_ids[0] to session_ids[1], 1 to 2, etc
+        session_type : str
+            one of ['pre', 'behavior', 'post']
+    """
+    if session_type == 'pre':
+        ## A to B
+        AtoB = overlap.overlap.loc[(overlap.session_id1 == session_ids[0]) & (overlap.session_id2 == session_ids[1])].reset_index()
+        AtoB.insert(2, 'mouse', mouse)
+        AtoB.insert(3, 'context', 'a_b')
+        ## B to C
+        BtoC = overlap.overlap.loc[(overlap.session_id1 == session_ids[1]) & (overlap.session_id2 == session_ids[2])].reset_index()
+        BtoC.insert(2, 'mouse', mouse)
+        BtoC.insert(3, 'context', 'b_c')
+        ## C to D
+        CtoD = overlap.overlap.loc[((overlap.session_id1 == session_ids[2]) & (overlap.session_id2 == session_ids[3])) | ((overlap.session_id1 == session_ids[2]) & (overlap.session_id2 == session_ids[4]))].reset_index()
+        CtoD.insert(2, 'mouse', mouse)
+        CtoD.insert(3, 'context', 'c_d_ra')
+        output = pd.concat([AtoB, BtoC, CtoD], ignore_index = True)
+        return output
