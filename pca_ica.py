@@ -753,6 +753,23 @@ def save_detected_ensembles(path, mouse, neural_dict, nullhyp = 'circ', n_shuffl
 
 
     
-
+def ensemble_membership(assemblies):
+    """
+    Create a boolean array that tells you which cells are 2 SDs above the mean.
+    Args:
+        assemblies : dict
+            output from find_assemblies function
+    Returns:
+        participants : list
+            list of np.arrays of boolean values; true if a cell is 2 SD above the mean
+    """
+    participants = []
+    for i in np.arange(0, assemblies['patterns'].shape[0]):
+        ensemble_average = assemblies['patterns'][i].mean()
+        ## two stand deviations above the mean
+        ensemble_cutoff = (assemblies['patterns'][i].std() * 2) + ensemble_average
+        participating_cells = assemblies['patterns'][i] > ensemble_cutoff
+        participants.append(participating_cells)
+    return participants
         
        
