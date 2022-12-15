@@ -45,7 +45,7 @@ def open_minian(dpath, post_process=None, return_dict=False):
     return ds
 
 
-def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down_sample = True, down_sample_factor = 2, ttl_darkness = False):
+def align_miniscope_frames(minian_timestamps, time, date, plot_frame_usage=False, down_sample = True, down_sample_factor = 2, ttl_darkness = False):
     """
     Takes timestamps matrix associated with a miniscope recording and a regularly spaced time vector the expected length of the session. 
     For each timeframe in 'time', the closest frame from minian_timestamps is acquired.
@@ -74,6 +74,10 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down
     if ttl_darkness:
         minian_timestamps[4:]
     ## Determine which frame is closest to the ideal time vector
+    if minian_timestamps['Time Stamp (ms)'].isnull().values.any():
+        minian_timestamps_dropped = minian_timestamps.dropna()
+        frames_dropped = len(minian_timestamps) - len(minian_timestamps_dropped)
+        time = time[0:-(frames_dropped + 4)] ## still trying to figure out why 4 here works - something to do with downsampling and where the timestamp.csvs are joined
     arg_mins = [np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin() for t in time]
     lined_up_timeframes = np.array(minian_timestamps['Frame Number'].values[arg_mins])
 
@@ -92,7 +96,7 @@ def align_miniscope_frames(minian_timestamps, time, plot_frame_usage=False, down
             template="simple_white",
             xaxis_title="Time (ms)",
             yaxis_title="Frequency",
-            title_text="Number of times each miniscope frame was re-used",
+            title_text="Number of times each miniscope frame was re-used for {}".format(date),
         )
         fig.show(config={"scrollZoom": True})
 
@@ -160,7 +164,7 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
         )
     time = np.arange(0, frame_count * sampling_rate, sampling_rate)
     ## If you downsampled during minian processing, can change downsample_factor
-    lined_up_timeframes = align_miniscope_frames(minian_timestamps, time, plot_frame_usage = plot_frame_usage)
+    lined_up_timeframes = align_miniscope_frames(minian_timestamps, time, date = date, plot_frame_usage = plot_frame_usage)
     if downsample_further:
         lined_up_timeframes = lined_up_timeframes[::downsample_factor]
     ## Select frames based on line-up timeframes
@@ -172,7 +176,7 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
     return neural_activity
 
 
-def import_mouse_neural_data(path, mouse, key_file, neural_type = 'spikes', plot_frame_usage = False):
+def import_mouse_neural_data(path, mouse, key_file, session = '20min', neural_type = 'spikes', plot_frame_usage = False):
     """
     Import all data for one mouse. Requires a yml file that contains session identifier keys.
     Args:
@@ -199,7 +203,7 @@ def import_mouse_neural_data(path, mouse, key_file, neural_type = 'spikes', plot
     dpath = pjoin(path, 'Results/')
     dpath = pjoin(dpath, '{}/'.format(mouse))
     for date in os.listdir(dpath):
-        sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_minian(path, mouse, date, neural_type = neural_type, plot_frame_usage = plot_frame_usage)
+        sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_minian(path, mouse, date, session = session, neural_type = neural_type, plot_frame_usage = plot_frame_usage)
     return sessions
 
 
