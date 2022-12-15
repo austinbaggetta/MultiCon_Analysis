@@ -124,3 +124,92 @@ def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_co
     fig.update_layout(template = template, xaxis_title = 'Day')
     fig.update_layout(showlegend = False)
     return fig
+
+def plot_across_groups(agg_data, groupby, separateby, plot_var, colors, title, datapoint_var='mouse', y_range=None, plot_datapoints=False, plot_datalines=False,
+    y_title='', text_size=15, opacity=0.8, plot_width=600, plot_height=600, tick_angle=45, scale_y=True, h_spacing=0.05, save_path=None, plot_scale=5):
+    """
+    Plot multiple bar plots (one for each unique type in 'separateby') with multiple bars on each plot (one bar for each unique type in 'groupby')
+    """
+    # Note that the separating variable must be of type pd.Categorical(ordered=True), such that its unique values can be sorted
+    # This can be done by: agg_data[separateby] = pd.Categorical(agg_data[separateby], categories=['list','of','unique','values'], ordered=True)
+    subplot_titles = agg_data[separateby].unique()
+    fig = make_subplots(
+        cols=len(subplot_titles), subplot_titles=subplot_titles, horizontal_spacing=h_spacing, shared_yaxes=scale_y
+    )
+    for i, val in enumerate(agg_data[separateby].unique()):
+        sub_data = agg_data[agg_data[separateby] == val]
+        means = sub_data[[groupby, plot_var]].groupby(groupby).mean()[plot_var].sort_index()
+        sems = sub_data[[groupby, plot_var]].groupby(groupby).sem()[plot_var].sort_index()
+        xlabels = means.index.values
+        fig.add_trace(
+            go.Bar(
+                x=xlabels,
+                y=means[xlabels].values,
+                error_y=dict(type="data", array=sems.values, visible=True),
+                marker_color=colors,
+                marker=dict(line=dict(width=1, color="black"), opacity=opacity),
+            ),
+            row=1,
+            col=i + 1,
+        )
+        if plot_datapoints:
+            for point in sub_data[datapoint_var].unique():
+                point_data = sub_data[sub_data[datapoint_var] == point]
+                fig.add_trace(
+                    go.Scattergl(
+                        x=point_data[groupby].values,
+                        y=point_data[plot_var].values,
+                        mode="markers",
+                        marker=dict(color="black", opacity=0.4),
+                        name=str(point),
+                    ),
+                    row=1,
+                    col=i + 1,
+                )
+        if plot_datalines:
+            for line in sub_data[datapoint_var].unique():
+                line_data = sub_data[sub_data[datapoint_var] == line]
+                line_data = line_data.iloc[line_data[groupby].argsort(),:]
+                fig.add_trace(
+                    go.Scatter(
+                        x=line_data[groupby].values,
+                        y=line_data[plot_var].values,
+                        mode="lines+markers",
+                        line=dict(width=1),
+                        marker=dict(color="black", opacity=0.4),
+                        name=str(line),
+                    ),
+                    row=1,
+                    col=i + 1,
+                )
+    fig.add_hline(y=0, row=1, col='all', line_width=1, opacity=1, line_color='black')
+    fig.update_layout(
+        dragmode="pan",
+        yaxis_title=y_title,
+        font=dict(size=text_size),
+        title_text=title,
+        autosize=False,
+        width=plot_width,
+        height=plot_height,
+        template="simple_white",
+        showlegend=False,
+    )
+    if tick_angle is not None:
+        fig.update_xaxes(tickangle=tick_angle)
+    if y_range is not None:
+        fig.update_yaxes(range=y_range)
+    if save_path is not None:
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.mkdir(os.path.dirname(save_path))
+        fig.write_image(save_path, format='png', scale=plot_scale)
+    config = {
+        'scrollZoom':True,
+        'toImageButtonOptions': {
+            'format': 'png',
+            'filename': 'custom_image',
+            'height': plot_height,
+            'width': plot_width,
+            'scale':plot_scale
+            }
+            }
+    fig.show(config=config)
