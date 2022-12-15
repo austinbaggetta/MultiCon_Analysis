@@ -2,36 +2,7 @@ import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-
-
-def dates_to_days(data, start_date, days):
-    """
-    Used to convert dates (e.g. '2022_06_08') to days (e.g. 1) for intuitive axes during plotting.
-    Args:
-        data : pandas.DataFrame
-            usually pairwise comparison dataframes, if 'session_id1', etc. are dates
-        start_date : str
-            start date of the experiment (e.g. '2022_06_08')
-        days : int
-            number of days the experiment was for
-    Returns:
-        df : pandas.DataFrame
-            dates will be changed to integer days
-    """
-    ## Start date of experiment
-    start = datetime.datetime.strptime(start_date, '%Y_%m_%d')
-    ## Set DayID to 1
-    DayID = 1
-    ## Create a date range from the start of the experiment to the end 
-    dates = pd.date_range(start, periods = days)
-    ## Initialize empty dictionary
-    day_dict = {}
-    ## Loop through all dates, add each date as a key to day_dict
-    for date in dates:
-        day_dict[date.strftime('%Y_%m_%d')] = DayID
-        DayID += 1
-    df = data.replace(day_dict)
-    return df
+from plotly.subplots import make_subplots
 
 
 def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
@@ -89,7 +60,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_color = 'rgb(179,179,179)', template = 'simple_white'):
+def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_color = 'rgb(179,179,179)', template = 'simple_white', plot_datapoints = True):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -112,10 +83,11 @@ def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_co
     sem_data = data.groupby([groupby_var]).sem().reset_index()
     ## Create figure
     fig = go.Figure()
-    ## Plot individual subjects
-    fig.add_trace(go.Scatter(x = data[groupby_var], y = data[behavior_var],
-                             mode = 'markers', opacity = 0.5,
-                             marker = dict(color = marker_color, line = dict(width = 1))))
+    if plot_datapoints:
+        ## Plot individual subjects
+        fig.add_trace(go.Scatter(x = data[groupby_var], y = data[behavior_var],
+                                mode = 'markers', opacity = 0.5,
+                                marker = dict(color = marker_color, line = dict(width = 1))))
     ## Plot group average
     fig.add_trace(go.Scatter(x = avg_data[groupby_var], y = avg_data[behavior_var],
                              mode = 'lines+markers',
@@ -124,6 +96,7 @@ def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_co
     fig.update_layout(template = template, xaxis_title = 'Day')
     fig.update_layout(showlegend = False)
     return fig
+
 
 def plot_across_groups(agg_data, groupby, separateby, plot_var, colors, title, datapoint_var='mouse', y_range=None, plot_datapoints=False, plot_datalines=False,
     y_title='', text_size=15, opacity=0.8, plot_width=600, plot_height=600, tick_angle=45, scale_y=True, h_spacing=0.05, save_path=None, plot_scale=5):
@@ -213,3 +186,27 @@ def plot_across_groups(agg_data, groupby, separateby, plot_var, colors, title, d
             }
             }
     fig.show(config=config)
+
+
+def plot_cell_contribution(assemblies, colorscale = 'Viridis', template = 'simple_white', height = 800, width = 800):
+    """
+    Creates a heatmap of ensemble by cell, where the color indicates how strongly a cell weighs into an ensemble.
+    Args:
+        assemblies : dict
+            output from find_assemblies function; dictionary has a key ['patterns']
+    """
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(z = assemblies['patterns'],
+                            coloraxis = 'coloraxis'))
+    fig.update_layout(template = template,
+                      title = {'text': 'Cell Contribution to Each Ensemble',
+                            'xanchor': 'center',
+                            'y' : 0.9,
+                            'x' : 0.5}, 
+                      xaxis_title = 'Cell Number',
+                      yaxis_title = 'Ensemble Number',
+                      coloraxis = {'colorscale': colorscale},
+                      width = width,
+                      height = height)
+    fig.update_layout(coloraxis_colorbar = {'title': 'Weight'})
+    fig.show(config={'scrollZoom':True})
