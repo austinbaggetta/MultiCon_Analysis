@@ -22,6 +22,7 @@ import pymannkendall as mk
 from statsmodels.stats.multitest import multipletests
 import numpy.matlib
 import pickle
+from os.path import join as pjoin
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -750,6 +751,35 @@ def save_detected_ensembles(path, mouse, neural_dict, nullhyp = 'circ', n_shuffl
         assemblies = find_assemblies(neural_dict[key].values, nullhyp = nullhyp, n_shuffles = n_shuffles)
         with open('{}/assemblies_{}_{}.pickle'.format(path, mouse, key), 'wb') as handle:
             pickle.dump(assemblies, handle, protocol = pickle.HIGHEST_PROTOCOL)
+
+
+
+def load_session_assemblies(mouse, spath, format = 'pickle', session_id = None):
+    """
+    Load pickle files of detected assemblies.
+    Args:
+        mouse : str
+            mouse name
+        spath : str
+            path to pkl file
+        experimenter : str
+            one of ['pkl', 'pickle']; accounts for different pickle file naming conventions
+        session_id : str
+            one of ['neutral_only', 'fear_only', 'neutral_fear', 'remaining_ensemble']
+    Returns:
+        assemblies : dict
+            dictionary of session-specific assemblies
+    """
+    if format == 'pkl':
+        ## Create file named based on specified session_id
+        file_name = pjoin(spath, '{}_{}_ensembles.pkl'.format(mouse, session_id))
+    elif format == 'pickle':
+        ## Create file named based on specified session_id
+        file_name = pjoin(spath, '{}_{}_ensembles.pickle'.format(mouse, session_id))
+    ## Open pkl file
+    with open(file_name, 'rb') as handle:
+        assemblies = pickle.load(handle)
+    return assemblies
 
 
     
