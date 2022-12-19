@@ -210,3 +210,59 @@ def plot_cell_contribution(assemblies, colorscale = 'Viridis', template = 'simpl
                       height = height)
     fig.update_layout(coloraxis_colorbar = {'title': 'Weight'})
     fig.show(config={'scrollZoom':True})
+
+
+def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue', title = '', nonmem_color = 'black', hline_color = 'black', 
+              size = 2, opacity = 0.5, height = 800, width = 800, template = 'simple_white'):
+    """
+    Create a stem plot, where the marker indicates the weight of that neuron in this ensemble. Members of the ensemble are plotted in a separate color.
+    Args:
+        pattern : numpy.ndarray
+            An ensemble determined by the find_assemblies function. Obtained by subsetting assemblies['patterns'] (e.g. assemblies['patterns'][0])
+        baseline : int
+            Determines where a solid line will be drawn to indicate the baseline of the ensemble; by default set at 0
+        plot_members : boolean
+            If True, will color members of the ensemble a different color; membership determined by their weight being 2 standard deviations above/below the mean
+            By default True
+    Returns:
+        fig
+    """
+    ## Get number of neurons
+    n_neurons = len(pattern)
+    loc = []
+    head = []
+    ## Get x position (loc) and y value (head)
+    for i in np.arange(0, n_neurons):
+        loc.append(i)
+        head.append(pattern[i])
+    temp_dict = {'location': loc, 'head': head}
+    ## Create a boolean list where True means that neuron is a member of this ensemble
+    ## Includes both positive and negative values 2 SD above/below the mean
+    if plot_members:
+        ensemble_cutoff_pos = (pattern.mean() + (pattern.std() * 2))
+        ensemble_cutoff_neg = (pattern.mean() - (pattern.std() * 2))
+        participants = (pattern > ensemble_cutoff_pos) | (pattern < ensemble_cutoff_neg)
+        temp_dict['participants'] = participants
+    else:
+        participants = np.repeat(False, n_neurons)
+        temp_dict['participants'] = participants
+    ## Create dataframe
+    df = pd.DataFrame(temp_dict)
+    ## Plot figure
+    fig = go.Figure()
+    for neuron in np.arange(0, n_neurons):
+        if df.participants[neuron] == True:
+            fig.add_trace(go.Scatter(x = [df['location'][neuron], df['location'][neuron]], y = [0, df['head'][neuron]], mode = 'lines+markers', 
+                          line=dict(width=1, color=member_color), marker=dict(color=member_color), opacity = opacity))
+        else:
+            fig.add_trace(go.Scatter(x = [df['location'][neuron], df['location'][neuron]], y = [0, df['head'][neuron]], mode = 'lines+markers', 
+                          line=dict(width=1, color=nonmem_color), marker=dict(color=nonmem_color), opacity = opacity))
+    ## Change marker size, change template, add x/y titles, title, and horizontal line at zero
+    fig.update_traces(marker=dict(size = size))
+    fig.update_layout(template = template, height = height, width = width, showlegend = False, xaxis_title = 'Neuron', yaxis_title = 'Weight')
+    fig.update_layout(title = {'text': title,
+                            'xanchor': 'center',
+                            'y' : 0.9,
+                            'x' : 0.5})
+    fig.add_hline(y = baseline, line_dash = 'solid', opacity = 1, line_width = 1, line_color = hline_color)
+    return fig
