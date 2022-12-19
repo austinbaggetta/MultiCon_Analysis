@@ -301,7 +301,7 @@ def find_assemblies(
     if use_bool:
         actmat = bool_arr
     else:
-        actmat = stats.zscore(neural_data, axis=1)
+        actmat = stats.zscore(neural_data, axis=1) 
 
     # Replace NaNs.
     imp = SimpleImputer(missing_values=np.nan, strategy="constant", fill_value=0)
@@ -766,9 +766,10 @@ def ensemble_membership(assemblies):
     participants = []
     for i in np.arange(0, assemblies['patterns'].shape[0]):
         ensemble_average = assemblies['patterns'][i].mean()
-        ## two stand deviations above the mean
-        ensemble_cutoff = (assemblies['patterns'][i].std() * 2) + ensemble_average
-        participating_cells = assemblies['patterns'][i] > ensemble_cutoff
+        ## two stand deviations above or below the mean
+        ensemble_cutoff_pos = ensemble_average + (assemblies['patterns'][i].std() * 2)
+        ensemble_cutoff_neg = ensemble_average - (assemblies['patterns'][i].std() * 2)
+        participating_cells = (assemblies['patterns'][i] > ensemble_cutoff_pos) | (assemblies['patterns'][i] < ensemble_cutoff_neg)
         participants.append(participating_cells)
     return participants
         
