@@ -1,8 +1,10 @@
-import datetime
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+## Import custom functions
+import circletrack_behavior as ctb
 
 
 def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
@@ -60,7 +62,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_color = 'rgb(179,179,179)', template = 'simple_white', plot_datapoints = True):
+def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], marker_color = 'rgb(179,179,179)', template = 'simple_white', plot_datapoints = True):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -78,20 +80,20 @@ def plot_behavior_across_days(data, behavior_var, groupby_var = 'day', marker_co
             figure     
     """
     ## Calculate mean for each day
-    avg_data = data.groupby([groupby_var]).mean().reset_index()
+    avg_data = data.groupby(groupby_var, as_index = False).mean(numeric_only = True)
     ## Calculate SEM for each day
-    sem_data = data.groupby([groupby_var]).sem().reset_index()
+    sem_data = data.groupby(groupby_var, as_index = False).sem()
     ## Create figure
     fig = go.Figure()
     if plot_datapoints:
         ## Plot individual subjects
-        fig.add_trace(go.Scatter(x = data[groupby_var], y = data[behavior_var],
+        fig.add_trace(go.Scatter(x = data[x_var], y = data[y_var],
                                 mode = 'markers', opacity = 0.5,
                                 marker = dict(color = marker_color, line = dict(width = 1))))
     ## Plot group average
-    fig.add_trace(go.Scatter(x = avg_data[groupby_var], y = avg_data[behavior_var],
+    fig.add_trace(go.Scatter(x = avg_data[x_var], y = avg_data[y_var],
                              mode = 'lines+markers',
-                             error_y = dict(type = 'data', array = sem_data[behavior_var]),
+                             error_y = dict(type = 'data', array = sem_data[y_var]),
                              line = dict(color = 'rgb(172,78,163)')))
     fig.update_layout(template = template, xaxis_title = 'Day')
     fig.update_layout(showlegend = False)
@@ -265,4 +267,32 @@ def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue',
                             'y' : 0.9,
                             'x' : 0.5})
     fig.add_hline(y = baseline, line_dash = 'solid', opacity = 1, line_width = 1, line_color = hline_color)
+    return fig
+
+
+def plot_linearized_position(aligned_behavior, trials, forward_trials, reverse_trials, angle_type = 'radians', forward_trial_color = 'green', reverse_trial_color = 'orchid'):
+    ## Get linearized position 
+    linearized_position = ctb.linearize_trajectory(aligned_behavior, angle_type = angle_type, shift_factor = 0)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x = aligned_behavior.timestamp, y = linearized_position, line = dict(color = 'black'), showlegend = False))
+    for forward in enumerate(forward_trials):
+        if forward[0] == 0:
+            fig.add_trace(go.Scatter(x = aligned_behavior.timestamp[trials == forward[1]], y = linearized_position[trials == forward[1]], line = dict(color = forward_trial_color), legendgroup = 'forward', name = 'Forward'))
+        else:
+            fig.add_trace(go.Scatter(x = aligned_behavior.timestamp[trials == forward[1]], y = linearized_position[trials == forward[1]], line = dict(color = forward_trial_color), legendgroup = 'forward', showlegend = False))
+    for backward in enumerate(reverse_trials):
+        if backward[0] == 0:
+            fig.add_trace(go.Scatter(x = aligned_behavior.timestamp[trials == backward[1]], y = linearized_position[trials == backward[1]], line = dict(color = reverse_trial_color), legendgroup = 'backward', name = 'Reverse'))
+        else:
+            fig.add_trace(go.Scatter(x = aligned_behavior.timestamp[trials == backward[1]], y = linearized_position[trials == backward[1]], line = dict(color = reverse_trial_color), legendgroup = 'backward', showlegend = False))
+    fig.update_layout(template = 'simple_white', showlegend = True)
+    fig.update_layout(
+        title={
+            'text': 'Forward and Reverse Trials',
+            'y':0.9,
+            'x':0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'})
+    fig.update_yaxes(title = 'Linearized Position')
+    fig.update_xaxes(title = 'Time (s)')
     return fig
