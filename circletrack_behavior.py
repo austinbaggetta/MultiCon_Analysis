@@ -179,7 +179,7 @@ def normalize_timestamp(data):
         data : pandas.DataFrame
             timestamp column converted to seconds
     """
-    time = data.timestamp.loc[data.event == 'START'].reset_index()
+    time = data.loc[data.event == 'START', 'timestamp'].reset_index()
     start_time = float(time.timestamp[0])
     data.timestamp = (pd.to_numeric(data.timestamp) - start_time)
     return data
@@ -327,10 +327,10 @@ def get_location_data(file_list, mouse, include_licks = False):
             location = norm_data.loc[norm_data.event == 'LOCATION']
             ## append to dictionary
             for i in range(1, len(location)):
-                location_data['timestamp'].append(location.timestamp.iloc[i])
-                location_data['x_pos'].append(float(re.search(r'X([0-9]+)', location.data.iloc[i]).group(1)))
-                location_data['y_pos'].append(float(re.search(r'Y([0-9]+)', location.data.iloc[i]).group(1)))
-                location_data['a_pos'].append(float(re.search(r'A([0-9]+)', location.data.iloc[i]).group(1)))
+                location_data['timestamp'].append(location.timestamp.to_numpy()[i])
+                location_data['x_pos'].append(float(re.search(r'X([0-9]+)', location.data.to_numpy()[i]).group(1)))
+                location_data['y_pos'].append(float(re.search(r'Y([0-9]+)', location.data.to_numpy()[i]).group(1)))
+                location_data['a_pos'].append(float(re.search(r'A([0-9]+)', location.data.to_numpy()[i]).group(1)))
                 location_data['mouse'].append(mouse)
                 location_data['day'].append(DayID)
                 location_data['lick'].append(False)
@@ -457,7 +457,7 @@ def align_behavior_frames(df, time, plot_frame_usage=False):
             vector of lined up frames to use to align recording to the time vector.
     """
     arg_mins = [np.abs(df['timestamp'] - (t)).argmin() for t in time]
-    lined_up_timeframes = np.array(df.frame_number.loc[arg_mins])
+    lined_up_timeframes = np.array(df.loc[arg_mins, 'frame_number'])
     ## Plot frame usage
     if plot_frame_usage:
         duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
@@ -529,17 +529,17 @@ def load_and_align_behavior(path, mouse, date, session = '20min', sampling_rate 
     ## Normalize timestamp
     norm_data = normalize_timestamp(cropped_data)
     ## Get location
-    location = norm_data.loc[(norm_data.event == 'LOCATION') | (norm_data.event == 'START')]
-    location.reset_index(drop = True)
+    location = norm_data[(norm_data.event == 'LOCATION') | (norm_data.event == 'START')]
+    location = location.reset_index(drop = True)
     ## Set START to next frame's x,y,a value
-    location.data.iloc[0] = location.data.iloc[1]
+    location.loc[0, 'data'] = location.loc[1, 'data']
     ## Initialize empty dictionary
     location_data = {'timestamp': [], 'x_pos': [], 'y_pos': [], 'a_pos': []}
     for i in range(len(location)):
-        location_data['timestamp'].append(location.timestamp.iloc[i])
-        location_data['x_pos'].append(float(re.search(r'X([0-9]+)', location.data.iloc[i]).group(1)))
-        location_data['y_pos'].append(float(re.search(r'Y([0-9]+)', location.data.iloc[i]).group(1)))
-        location_data['a_pos'].append(float(re.search(r'A([0-9]+)', location.data.iloc[i]).group(1)))
+        location_data['timestamp'].append(location.loc[i, 'timestamp'])
+        location_data['x_pos'].append(float(re.search(r'X([0-9]+)', location.loc[i, 'data']).group(1)))
+        location_data['y_pos'].append(float(re.search(r'Y([0-9]+)', location.loc[i, 'data']).group(1)))
+        location_data['a_pos'].append(float(re.search(r'A([0-9]+)', location.loc[i, 'data']).group(1)))
     ## Convert to pd.DataFrame
     df = pd.DataFrame(location_data)
     df['frame_number'] = range(0, len(df))
@@ -585,3 +585,347 @@ def import_mouse_behavior_data(path, mouse, key_file, session, plot_frame_usage 
     for date in os.listdir(dpath):
         sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_behavior(path, mouse, date, session = session, plot_frame_usage = plot_frame_usage)
     return sessions
+
+
+def linearize_trajectory(df, angle_type, shift_factor, inner_d = 25, outer_d = 30, unit = 'cm'):
+    """
+    Linearizes circular position into physical length units.
+    Args:
+        df : pandas.DataFrame
+            behavior data that contains angular position
+        angle_type : str
+            one of ['degrees', 'radians']
+        d1 : float
+            diameter between inner walls of the circular track
+        d2 : float
+            diameter between outer walls of the circular track
+        unit : str
+            one of ['cm', 'in']
+        shift_factor : float
+            used to shift the 0 position; by default None, which implies no shifting
+            if using degrees shift_factor is in degrees - if in radians, use np.pi
+    Returns:
+        linearized_position | result : list
+    """
+    if unit == 'cm':
+        ## convert inches to cm
+        d1 = inner_d * 2.54
+        d2 = outer_d * 2.54
+    elif unit == 'in':
+        d1 = inner_d
+        d2 = outer_d
+    ## Take the average of the two since the mouse is between the inner and outer wall
+    r = np.mean([(d1/2), (d2/2)])
+    if angle_type == 'degrees':
+        linearized_position = []
+        for i in np.arange(0, len(df)):
+                linearized_position.append(((df.a_pos.iloc[i] + shift_factor) / 360) * 2 * np.pi * r)
+        return linearized_position
+    elif angle_type == 'radians':
+        angles = []
+        for i in np.arange(0, len(df)):
+                angles.append((df.a_pos.iloc[i] * (np.pi/180)) + shift_factor) ## np.pi/180 converts degrees to radians
+        result = np.mod(angles, 2 * np.pi)
+        return result
+
+
+def bin_linearized_position(linearized_trajectory, angle_type = 'radians', bin_num = 8):
+    """
+    Create a certain number of bins, then determine which bin the data from linearized_trajectory is in.
+    Args:
+        linearized_trajectory : list
+            output from linearize_trajectory function
+        angle_type : str
+            one of ['degrees', 'radians']; by default radians
+        bin_num : int
+            number of bins; will end up being bin_num - 1
+    Returns:
+        binned : list
+            list where each linearized position is labeled by what bin it is a part of
+    """
+    if angle_type == 'radians':
+        bins = np.linspace(0, 2 * np.pi, (bin_num+1))
+        binned = np.digitize(linearized_trajectory, bins)
+    elif angle_type == 'degrees':
+        bins = np.linspace(0, np.max(linearized_trajectory), (bin_num+1))
+        binned = np.digitize(linearized_trajectory, bins)
+    return binned
+
+
+def get_trials(df, shift_factor, angle_type = 'radians', counterclockwise = True):
+    """
+    Labels timestamps with trail numbers.
+    Args:
+        df : pandas.DataFrame
+        counterclockwise : boolean
+            determines whether session was run with the mouse running counterclockwise; by default True
+    """
+    ## Linearize then bin position into one of 8 bins
+    position = linearize_trajectory(df, shift_factor = shift_factor, angle_type = angle_type)
+    binned_position = bin_linearized_position(position, angle_type = angle_type)
+    bins = np.unique(binned_position)
+    ## For each bin, get timestamps when the mouse was in that bin
+    indices = [np.where(binned_position == this_bin)[0] for this_bin in bins]
+    if counterclockwise:  ## reverse the order of the bins.
+        indices = indices[::-1]
+    ## Preallocate trial vector
+    trials = np.full(binned_position.shape, np.nan)
+    trial_start = 0
+    last_idx = 0
+    ## We need to loop through bins rather than simply looking for border crossings because a mouse can backtrack, which we wouldn't want to count.
+    ## For a large number of trials...
+    for trial_number in range(500):
+        ## For each bin...
+        for this_bin in indices:
+            ## Find the first timestamp that comes after the first timestamp in the last bin for that trial. 
+            ## Argmax is supposedly faster than np.where.
+            last_idx = this_bin[np.argmax(this_bin > last_idx)]
+        ## After looping through all the bins, remember the last timestamp where there was a bin transition.
+        trial_end = last_idx
+        ## If the slice still has all NaNs, label it with the trial number.
+        if np.all(np.isnan(trials[trial_start:trial_end])):
+            trials[trial_start:trial_end] = trial_number
+        ## If not, finish up and exit the loop.
+        else:
+            trials[np.isnan(trials)] = trial_number - 1
+            break
+        ## The start of the next trial is the end of the last.
+        trial_start = trial_end
+    return trials.astype(int)
+
+
+def forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2):
+    """
+    After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
+    Args:
+        aligned_behavior : pandas.DataFrame
+            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
+            contains x_pos, y_pos, and a_pos (angular position in degrees)
+        trials : numpy.ndarray
+            array of every timestamp labeled as a trial number; output from get_trials function
+        positive_jump : int
+            The linearized position has a large jump when the angular position resets, so we want our difference 
+            in angular position to be less than this positive jump
+        wiggle : int
+            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
+            incorrect direction due to noise. We want our difference between successive angular positions to
+            be greater than this noise.
+    Returns:
+        forward_trials, backward_trials : list
+            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
+    """
+    forward_trials = []
+    backward_trials = []
+    for trial in np.unique(trials):
+        ## Take the difference between each angular position within a given trial to determine direction
+        diff = aligned_behavior.a_pos[trials == trial].diff()
+        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
+        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
+            forward_trials.append(trial)
+        else:
+            backward_trials.append(trial)
+    return forward_trials, backward_trials
+
+
+def calculate_trial_length(aligned_behavior, angle_type = 'radians', shift_factor = 0, forward_reverse = False):
+    """
+    Calculate the number of seconds that occurs in each trial.
+    Args:
+        aligned_behavior : pandas DataFrame
+            output from aligning behavior
+        angle_type : str
+            what angle type you want the linearize_position to use
+        shift_factor : float
+            how to shift the zero position
+        forward_reverse : boolean
+            will separate trials into forward and reverse trials
+    Returns:
+        time_diff : list
+            list of times corresponding to the time difference between the beginning and end of the trial
+        time_diff_forward, time_diff_reverse : list
+            list of times corresponding to the time difference between the beginning and end of the trial separated by forward and reverse trials
+    """
+    ## Calculate trials, label each frame as a specific trial
+    trials = get_trials(aligned_behavior, shift_factor = shift_factor, angle_type = angle_type, counterclockwise = True)
+    if forward_reverse:
+        ## Calculate forward and reverse trials
+        forward_trials, reverse_trials = forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2)
+        time_diff_forward = []
+        time_diff_reverse = []
+        ## Loop through forward trials
+        for f_trial in forward_trials:
+            behavior = aligned_behavior.loc[trials == f_trial]
+            ## Get the first and last timestamp to determine the window
+            first_timestamp, last_timestamp = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
+            time_diff_forward.append(last_timestamp - first_timestamp)
+        ## Loop through reverse trials
+        for r_trial in reverse_trials:
+            behavior = aligned_behavior.loc[trials == r_trial]
+            ## Get the first and last timestamp to determine the window
+            first_timestamp, last_timestamp = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
+            time_diff_reverse.append(last_timestamp - first_timestamp)
+        ## Comebine for both to do histogram plotting
+        time_diff = time_diff_forward + time_diff_reverse
+        return time_diff_forward, time_diff_reverse
+    else:
+        time_diff = []
+        for trial in np.unique(trials):
+            ## Subset aligned_behavior by a given trial
+            behavior = aligned_behavior.loc[trials == trial]
+            ## Get the first and last timestamp to determine the window
+            first_timestamp, last_timestamp = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
+            time_diff.append(last_timestamp - first_timestamp)
+        return time_diff
+
+
+def cart2pol(x, y):
+    """
+    Cartesian to polar coordinates. For linearizing circular trajectory.
+    :parameters
+    ---
+    x, y: array-like
+        x, y coordinates
+    :return
+    ---
+    (phi, rho): tuple
+        Angle (linearized distance) and radius (distance from center).
+    """
+    rho = np.sqrt(x ** 2 + y ** 2)
+    phi = np.arctan2(y, x)
+
+    return (phi, rho)
+
+
+def linearize_trajectory_will(behavior_df, x=None, y=None):
+    """
+    Linearizes circular track trajectory.
+    :parameter
+    ---
+    behavior_df: output from read_eztrack()
+    :returns
+    ---
+    angles: array
+        Basically the linearized trajectory. Technically it is the
+        polar coordinate with the center of the maze as the origin.
+    radii: array
+        Vector length of polar coordinate. Basically the distance from
+        the center. Maybe useful for something.
+    """
+    # Get circle size.
+    if x is None:
+        x = behavior_df.x
+    if y is None:
+        y = behavior_df.y
+    (width, height, radius, center) = circle_sizes_will(behavior_df.x, behavior_df.y)
+
+    # Convert to polar coordinates.
+    angles, radii = cart2pol(x - center[0], y - center[1])
+
+    # Shift everything so that 12 o'clock (pi/2) is 0.
+    angles += np.pi / 2
+    angles = np.mod(angles, 2 * np.pi)
+
+    return angles, radii
+
+
+def bin_position_will(linearized_position):
+    """
+    Bin radial position.
+    :parameter
+    ---
+    linearized_position: array
+        Linearized position (position in radians after passing through linearize_trajectory())
+    :return
+    ---
+    binned: array
+        Binned position.
+    """
+    bins = np.linspace(0, 2 * np.pi, 9)
+    binned = np.digitize(linearized_position, bins)
+
+    return binned
+
+
+def circle_sizes_will(x, y):
+    """
+    Get the size of the circle track given visited x and y coordinates.
+    The mouse must visit all parts of the circle.
+    :parameters
+    ---
+    x, y: array-like
+        x, y coordinates
+    :return
+    (width, height, radius, center): tuple
+        Self-explanatory.
+    """
+    x_extrema = [min(x), max(x)]
+    y_extrema = [min(y), max(y)]
+    width = np.diff(x_extrema)[0]
+    height = np.diff(y_extrema)[0]
+
+    radius = np.mean([width, height]) / 2
+    center = [np.mean(x_extrema), np.mean(y_extrema)]
+
+    return (width, height, radius, center)
+
+
+def get_trials_will(behavior_df, counterclockwise=False):
+    """
+    Labels timestamps with trial numbers. Looks through position indices as the mouse
+    passes through bins in a clockwise fashion (default).
+    :parameters
+    ---
+    behavior_df: output from Preprocess()
+    counterclockwise: boolean
+        Flag for whether session was run with the mouse running counterclockwise.
+    :return
+    trials: array, same size as behavior_df position
+        Labels for each timestamp for which trial the mouse is on.
+    """
+    # Linearize then bin position into one of 8 bins.
+    position = linearize_trajectory_will(behavior_df)[0]
+    binned_position = bin_position_will(position)
+    bins = np.unique(binned_position)
+
+    # For each bin number, get timestamps when the mouse was in that bin.
+    indices = [np.where(binned_position == this_bin)[0] for this_bin in bins]
+    if counterclockwise:  # reverse the order of the bins.
+        indices = indices[::-1]
+
+    # Preallocate trial vector.
+    trials = np.full(binned_position.shape, np.nan)
+    trial_start = 0
+    last_idx = 0
+
+    # We need to loop through bins rather than simply looking for border crossings
+    # because a mouse can backtrack, which we wouldn't want to count.
+    # For a large number of trials...
+    for trial_number in range(500):
+
+        # For each bin...
+        for this_bin in indices:
+            # Find the first timestamp that comes after the first timestamp in the last bin
+            # for that trial. Argmax is supposedly faster than np.where.
+            last_idx = this_bin[np.argmax(this_bin > last_idx)]
+
+        # After looping through all the bins, remember the last timestamp where there
+        # was a bin transition.
+        trial_end = last_idx
+
+        # If the slice still has all NaNs, label it with the trial number.
+        if np.all(np.isnan(trials[trial_start:trial_end])):
+            trials[trial_start:trial_end] = trial_number
+
+        # If not, finish up and exit the loop.
+        else:
+            trials[np.isnan(trials)] = trial_number - 1
+            break
+
+        # The start of the next trial is the end of the last.
+        trial_start = trial_end
+
+    # Debugging purposes.
+    # for trial in range(int(max(trials))):
+    #     plt.show_plot(position[trials == trial])
+
+    return trials.astype(int)
