@@ -23,6 +23,8 @@ from statsmodels.stats.multitest import multipletests
 import numpy.matlib
 import pickle
 from os.path import join as pjoin
+## Austin's custom py files
+import circletrack_behavior as ctb
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -448,42 +450,6 @@ def make_bins(data, samples_per_bin, axis=1):
     return bins.astype(int)
 
 
-def bin_transients(data, bin_size_in_seconds, fps=15, non_binary=False):
-    """
-    Bin data then sum the number of "S" (deconvolved S matrix)
-    within each bin.
-    :parameters
-    ---
-    data: xarray, or numpy array
-        Minian output (S matrix, usually).
-    bin_size_in_seconds: int
-        How big you want each bin, in seconds.
-    fps: int
-        Sampling rate (default takes into account 2x downsampling
-        from minian).
-    :return
-    ---
-    summed: (cell, bin) array
-        Number of S per cell for each bin.
-    """
-    # Convert input into array
-    if type(data) is not np.ndarray:
-        data = np.asarray(data)
-    #data = np.round(data, 3)
-
-    # Group data into bins.
-    bins = make_bins(data, bin_size_in_seconds * fps)
-    binned = np.split(data, bins, axis=1)
-
-    # Sum the number of "S" per bin.
-    if non_binary:
-        summed = [np.sum(bin, axis=1) for bin in binned]
-    else:
-        summed = [np.sum(bin > 0, axis=1) for bin in binned]
-
-    return np.vstack(summed).T
-
-
 def nan_array(size):
     arr = np.empty(size)
     arr.fill(np.nan)
@@ -491,6 +457,51 @@ def nan_array(size):
     return arr
 
 ####################### AUSTIN'S CODE STARTS HERE ############################
+def bin_transients(data, bin_size_in_seconds, fps=15, analysis_type = 'max', non_binary=False):
+    """
+    Bin data then either sum, average, or take the max value in the bin.
+    Args:
+        data : xarray, or numpy array
+            Minian output (S matrix, usually).
+        bin_size_in_seconds : int
+            How big you want each bin, in seconds.
+        fps : int
+            Sampling rate (default takes into account 2x downsampling
+            from minian).
+        analysis_type : str
+            Determines what is done to the binned data - must be one of ['sum', 'average_num_spikes', 'average_value', 'max']
+    Returns:
+        summed: (cell, bin) array
+            Number of S per cell for each bin.
+    """
+    ## Convert input into array
+    if type(data) is not np.ndarray:
+        data = np.asarray(data)
+    #data = np.round(data, 3)
+
+    # Group data into bins.
+    bins = make_bins(data, bin_size_in_seconds * fps)
+    binned = np.split(data, bins, axis=1)
+    if analysis_type == 'sum':
+    ## Sum the number of "S" per bin.
+        if non_binary:
+            summed = [np.sum(bin, axis=1) for bin in binned]
+        else:
+            summed = [np.sum(bin > 0, axis=1) for bin in binned]
+        return np.vstack(summed).T
+    ## Take the mean of the number of spikes within a bin
+    elif analysis_type == 'average_num_spikes':
+        average_spikes = [np.mean(bin > 0, axis = 1) for bin in binned]
+        return np.vstack(average_spikes).T
+    ## Get the mean value of a bin
+    elif analysis_type == 'average_value':
+        average_value = [np.mean(bin, axis = 1) for bin in binned]
+        return np.vstack(average_value).T
+    ## Get the max value within a bin
+    elif analysis_type == 'max':
+        max_value = [np.nanmax(bin, axis = 1) for bin in binned]
+        return np.vstack(max_value).T
+
 
 def calculate_ensemble_correlation_shared(assemblies_sess1, assemblies_sess2, test = 'pearson'):
     """
@@ -641,7 +652,66 @@ def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percenti
     return matched
 
 
-def define_ensemble_trends(activations, x_variable, z_threshold = None, x_bin_size = 1, zscored = True, alpha = 'sidak'):
+def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_size = 1, analysis_type = 'max', zscored = True, alpha = 'sidak'):
+    """"
+    Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
+    Use the Mann Kendall test to find trends.
+
+    Args:
+        activations : np.array
+            Values from data['activations'], which is determined from the find_assemblies function.
+        x_bin_size : int
+            If x == 'time', bin size in seconds
+            If x == 'trial', bin size in trials
+        zscored : boolean
+            Determines whether or not to zscore activations. By default True.
+    """
+    ## zscore activation strength data
+    if zscored:
+        data = zscore(activations, nan_policy = 'omit', axis = 1)
+    else:
+        data = activations
+
+    ## Binarize activations
+    activity = np.zeros_like(data)
+    if z_threshold is not None:
+        for i, unit in enumerate(data):
+            activity[i, unit > z_threshold] = unit[unit > z_threshold]
+    else:
+        activity = data
+
+    ## Bin by time, sum activation every few seconds
+    binned_activations = []
+    for unit in activity:
+        binned_activations.append(bin_transients(unit[np.newaxis], x_bin_size, fps = 15, analysis_type = analysis_type, non_binary = True)[0])
+    binned_activations = np.vstack(binned_activations)
+
+    ## Group ensembles into increasing, decreasing, or no trend
+    trends = {key: [] for key in ['no trend', 'decreasing', 'increasing']}
+    slopes, tau = nan_array(activity.shape[0]), nan_array(activity.shape[0])
+    ## If using sidak
+    if type(alpha) is str:
+        pvals = []
+        pval_thresh = 0.005
+        for i, unit in enumerate(binned_activations):
+            mk_test = mk.original_test(unit, alpha = 0.05)
+            pvals.append(mk_test.p)
+
+            slopes[i] = mk_test.slope
+            tau[i] = mk_test.Tau
+        ## Correct pvalues for multiple comparisons
+        corrected_pvals = multipletests(pvals, alpha = pval_thresh, method = alpha)[1]
+        ## Loop through tuples of combined corrected pvalues and slopes
+        for i, (corr_pval, slope) in enumerate(zip(corrected_pvals, slopes)):
+            if corr_pval < pval_thresh:
+                direction = 'increasing' if slope > 0 else 'decreasing'
+                trends[direction].append(i)
+            else:
+                trends['no trend'].append(i)
+        return trends, binned_activations, slopes, tau
+
+
+def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, trial_type = 'forward', z_threshold = None, zscored = True, alpha = 'sidak'):
     """"
     Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
     Use the Mann Kendall test to find trends.
@@ -660,7 +730,6 @@ def define_ensemble_trends(activations, x_variable, z_threshold = None, x_bin_si
         data = zscore(activations, nan_policy = 'omit', axis = 1)
     else:
         data = activations
-
     ## Binarize activations
     activity = np.zeros_like(data)
     if z_threshold is not None:
@@ -668,16 +737,26 @@ def define_ensemble_trends(activations, x_variable, z_threshold = None, x_bin_si
             activity[i, unit > z_threshold] = unit[unit > z_threshold]
     else:
         activity = data
-
-    ## Bin by time, sum activation every few seconds
-    if x_variable == 'time':
+    ## Bin by trial, take max activation strength within a bin
+    forward_trials, reverse_trials = ctb.forward_reverse_trials(aligned_behavior, trials)
+    if trial_type == 'forward':
         binned_activations = []
-        for unit in activity:
-            binned_activations.append(bin_transients(unit[np.newaxis], x_bin_size, fps = 15, non_binary = True)[0])
-        
-        binned_activations = np.vstack(binned_activations)
-
-    ## Bin by trials, sum activation every n trials, coming soon!!!!
+        for forward in forward_trials:
+            trial_activation = activity[:, trials == forward]
+            binned_activations.append(np.nanmax(trial_activation, axis = 1))
+        binned_activations = np.transpose(binned_activations)
+    elif trial_type == 'reverse':
+        binned_activations = []
+        for reverse in reverse_trials:
+            trial_activation = activity[:, trials == reverse]
+            binned_activations.append(np.nanmax(trial_activation, axis = 1))
+        binned_activations = np.transpose(binned_activations)
+    elif trial_type == 'all':
+        binned_activations = []
+        for trial in np.unique(trials):
+            trial_activation = activity[:, trials == trial]
+            binned_activations.append(np.nanmax(trial_activation, axis = 1))
+        binned_activations = np.transpose(binned_activations)
 
     ## Group ensembles into increasing, decreasing, or no trend
     trends = {key: [] for key in ['no trend', 'decreasing', 'increasing']}
@@ -775,7 +854,7 @@ def load_session_assemblies(mouse, spath, format = 'pickle', session_id = None):
         file_name = pjoin(spath, '{}_{}_ensembles.pkl'.format(mouse, session_id))
     elif format == 'pickle':
         ## Create file named based on specified session_id
-        file_name = pjoin(spath, '{}_{}_ensembles.pickle'.format(mouse, session_id))
+        file_name = pjoin(spath, 'assemblies_{}_{}.pickle'.format(mouse, session_id))
     ## Open pkl file
     with open(file_name, 'rb') as handle:
         assemblies = pickle.load(handle)
