@@ -652,6 +652,26 @@ def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percenti
     return matched
 
 
+def align_activations_to_behavior(activations, aligned_behavior):
+    """
+    Ensure the length of activations is the same length as behavior dataframe.
+    Args:
+        activations : numpy.ndarray
+            activation strength across frame
+        aligned_behavior : pandas.DataFrame
+            output from load_and_align_behavior function
+    Returns:
+        indexed_behavior : pandas.DataFrame
+            behavior df that's the same length as activations
+    """
+    subtraction = len(aligned_behavior.index) - activations.shape[1]
+    if subtraction > 0:
+        indexed_behavior = aligned_behavior[:-subtraction]
+    else:
+        indexed_behavior = aligned_behavior
+    return indexed_behavior
+
+
 def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_size = 1, analysis_type = 'max', zscored = True, alpha = 'sidak'):
     """"
     Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
@@ -783,7 +803,6 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
         return trends, binned_activations, slopes, tau
 
 
-## Calculate fading ensemble percentage
 def calculate_proportions_ensembles(trends):
     """
     Calculate the proportion of increasing and decreasing ensembles.
@@ -860,8 +879,7 @@ def load_session_assemblies(mouse, spath, format = 'pickle', session_id = None):
         assemblies = pickle.load(handle)
     return assemblies
 
-
-    
+   
 def ensemble_membership(assemblies):
     """
     Create a boolean array that tells you which cells are 2 SDs above the mean.
