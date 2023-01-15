@@ -296,3 +296,17 @@ def plot_linearized_position(aligned_behavior, trials, forward_trials, reverse_t
     fig.update_yaxes(title = 'Linearized Position')
     fig.update_xaxes(title = 'Time (s)')
     return fig
+
+
+def custom_graph_template(title, x_title, y_title, template = 'simple_white', height = 500, width = 500):
+    fig = go.Figure()
+    fig.update_layout(template = template, height = height, width = width)
+    fig.update_yaxes(title = y_title)
+    fig.update_xaxes(title = x_title)
+    fig.update_layout(title={
+        'text': title,
+        'y':0.9,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'})
+    return fig
