@@ -132,41 +132,6 @@ def get_licks(data):
     ## Get licks
     lick_tmp = data.loc[(data.event == 'LICK') | (data.event == 'REWARD')].replace(to_replace='REWARD', value='LICK').reset_index(drop = True)
     return lick_tmp
-
-
-def align_behavior_frames(data, time, plot_frame_usage=False):
-    """
-    Takes timestamps matrix associated with a miniscope recording and a regularly spaced time vector the
-    expected length of the session. For each timeframe in 'time', the closest frame from minian_timestamps is acquired.
-    Some frames are used more than once. Returns vector of lined up frames to use to align recording to the time vector.
-    """
-    lined_up_timeframes = np.array(
-        [
-            np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin()
-            for t in time
-        ]
-    )
-
-    if plot_frame_usage:
-        duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scattergl(
-                x=duplicated_timeframes[0],
-                y=duplicated_timeframes[1],
-                mode="lines+markers",
-                marker_size=5,
-            )
-        )
-        fig.update_layout(
-            template="simple_white",
-            xaxis_title="Time (ms)",
-            yaxis_title="Frequency",
-            title_text="Number of times each miniscope frame was re-used",
-        )
-        fig.show(config={"scrollZoom": True})
-
-    return lined_up_timeframes
     
     
 def normalize_timestamp(data):
@@ -778,154 +743,82 @@ def calculate_trial_length(aligned_behavior, angle_type = 'radians', shift_facto
         return time_diff
 
 
-def cart2pol(x, y):
+def label_lick_trials(aligned_behavior, lick_tmp, trials):
     """
-    Cartesian to polar coordinates. For linearizing circular trajectory.
-    :parameters
-    ---
-    x, y: array-like
-        x, y coordinates
-    :return
-    ---
-    (phi, rho): tuple
-        Angle (linearized distance) and radius (distance from center).
+    Labels a dataframe containing lick information with what trial those licks occurred during.
+    Args:
+        aligned_behavior : pandas.DataFrame
+            output from load_and_align_behavior function - df with at least columns timestamp, trial
+        lick_tmp : pandas.DataFrame
+            output from get_licks function - df with columns timestamp, event (LICK), data (which port)
+        trials : numpy.ndarray
+            array the same length as aligned_behavior.timestamp - labels each frame with what trial that frame is
+    Returns:
+        lick_data : pandas.DataFrame
+            df with same columns as lick_tmp, but now with trials
     """
-    rho = np.sqrt(x ** 2 + y ** 2)
-    phi = np.arctan2(y, x)
+    ## Create a trial column filled with NaN
+    lick_tmp.insert(3, 'trial', np.nan)
+    ## Create empty dataframe
+    lick_data = pd.DataFrame()
+    for trial in np.unique(trials):
+        ## Subset aligned_behavior by a given trial
+        behavior = aligned_behavior.loc[trials == trial]
+        ## Get the first and last timestamp to determine the window
+        first_timestamp = behavior.timestamp.to_numpy()[0]
+        last_timestamp = behavior.timestamp.to_numpy()[-1]
+        ## Create a temporary df by subsetting lick_tmp with the df values between the first and last timestamp
+        licks = lick_tmp[(lick_tmp.timestamp >= first_timestamp) & (lick_tmp.timestamp < last_timestamp)]
+        ## Loop through each row in licks and set the NaN value to the trial value
+        for i, row in licks.iterrows():
+            licks.at[i,'trial'] = trial
+        ## Combine
+        lick_data = pd.concat([lick_data, licks])
+    return lick_data
 
-    return (phi, rho)
 
-
-def linearize_trajectory_will(behavior_df, x=None, y=None):
+def dprime_metrics(lick_data, trials, reward_one, reward_two):
     """
-    Linearizes circular track trajectory.
-    :parameter
-    ---
-    behavior_df: output from read_eztrack()
-    :returns
-    ---
-    angles: array
-        Basically the linearized trajectory. Technically it is the
-        polar coordinate with the center of the maze as the origin.
-    radii: array
-        Vector length of polar coordinate. Basically the distance from
-        the center. Maybe useful for something.
+    Calculates hits, misses, false alarms, correct rejections, and dprime.
+    Args:
+        lick_data : pandas.DataFrame
+            output from label_lick_trials function - df with columns timestamp, event, data, and trial
+        trials : numpy.ndarray
+            array the same length as aligned_behavior.timestamp - labels each frame with what trial that frame is
+            output from get_trials function
+        reward_one, reward_two : str
+            output from get_rewarding_ports function - name of rewarding ports (reward1, reward5, for example)
+    Returns:
+        signal : dictionary
+            dictionary with keys hits, miss, FA, CR, dprime   
     """
-    # Get circle size.
-    if x is None:
-        x = behavior_df.x
-    if y is None:
-        y = behavior_df.y
-    (width, height, radius, center) = circle_sizes_will(behavior_df.x, behavior_df.y)
-
-    # Convert to polar coordinates.
-    angles, radii = cart2pol(x - center[0], y - center[1])
-
-    # Shift everything so that 12 o'clock (pi/2) is 0.
-    angles += np.pi / 2
-    angles = np.mod(angles, 2 * np.pi)
-
-    return angles, radii
-
-
-def bin_position_will(linearized_position):
-    """
-    Bin radial position.
-    :parameter
-    ---
-    linearized_position: array
-        Linearized position (position in radians after passing through linearize_trajectory())
-    :return
-    ---
-    binned: array
-        Binned position.
-    """
-    bins = np.linspace(0, 2 * np.pi, 9)
-    binned = np.digitize(linearized_position, bins)
-
-    return binned
-
-
-def circle_sizes_will(x, y):
-    """
-    Get the size of the circle track given visited x and y coordinates.
-    The mouse must visit all parts of the circle.
-    :parameters
-    ---
-    x, y: array-like
-        x, y coordinates
-    :return
-    (width, height, radius, center): tuple
-        Self-explanatory.
-    """
-    x_extrema = [min(x), max(x)]
-    y_extrema = [min(y), max(y)]
-    width = np.diff(x_extrema)[0]
-    height = np.diff(y_extrema)[0]
-
-    radius = np.mean([width, height]) / 2
-    center = [np.mean(x_extrema), np.mean(y_extrema)]
-
-    return (width, height, radius, center)
-
-
-def get_trials_will(behavior_df, counterclockwise=False):
-    """
-    Labels timestamps with trial numbers. Looks through position indices as the mouse
-    passes through bins in a clockwise fashion (default).
-    :parameters
-    ---
-    behavior_df: output from Preprocess()
-    counterclockwise: boolean
-        Flag for whether session was run with the mouse running counterclockwise.
-    :return
-    trials: array, same size as behavior_df position
-        Labels for each timestamp for which trial the mouse is on.
-    """
-    # Linearize then bin position into one of 8 bins.
-    position = linearize_trajectory_will(behavior_df)[0]
-    binned_position = bin_position_will(position)
-    bins = np.unique(binned_position)
-
-    # For each bin number, get timestamps when the mouse was in that bin.
-    indices = [np.where(binned_position == this_bin)[0] for this_bin in bins]
-    if counterclockwise:  # reverse the order of the bins.
-        indices = indices[::-1]
-
-    # Preallocate trial vector.
-    trials = np.full(binned_position.shape, np.nan)
-    trial_start = 0
-    last_idx = 0
-
-    # We need to loop through bins rather than simply looking for border crossings
-    # because a mouse can backtrack, which we wouldn't want to count.
-    # For a large number of trials...
-    for trial_number in range(500):
-
-        # For each bin...
-        for this_bin in indices:
-            # Find the first timestamp that comes after the first timestamp in the last bin
-            # for that trial. Argmax is supposedly faster than np.where.
-            last_idx = this_bin[np.argmax(this_bin > last_idx)]
-
-        # After looping through all the bins, remember the last timestamp where there
-        # was a bin transition.
-        trial_end = last_idx
-
-        # If the slice still has all NaNs, label it with the trial number.
-        if np.all(np.isnan(trials[trial_start:trial_end])):
-            trials[trial_start:trial_end] = trial_number
-
-        # If not, finish up and exit the loop.
-        else:
-            trials[np.isnan(trials)] = trial_number - 1
-            break
-
-        # The start of the next trial is the end of the last.
-        trial_start = trial_end
-
-    # Debugging purposes.
-    # for trial in range(int(max(trials))):
-    #     plt.show_plot(position[trials == trial])
-
-    return trials.astype(int)
+    ## Empty dictionary
+    signal = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
+    for trial in np.unique(trials):
+        trial_data = lick_data.loc[lick_data.trial == trial].reset_index(drop = True)
+        
+        go_trials = 2 ## two rewarding ports
+        nogo_trials = 6 ## 8 ports minus 2 rewarding ports
+        ## Loop through all rows of trial data
+        correct_licks = 0
+        incorrect_licks = 0
+        for row in np.arange(0, len(trial_data)):
+            if (trial_data.loc[row, 'data'] == reward_one) | (trial_data.loc[row, 'data'] == reward_two):
+                correct_licks += 1
+            else:
+                incorrect_licks += 1
+        # Get rates for hits, misses, false alarms, and correct rejections.
+        hit_rate = correct_licks / go_trials
+        miss_rate = (go_trials - correct_licks) / go_trials
+        FA_rate = incorrect_licks / nogo_trials
+        CR_rate = (nogo_trials - incorrect_licks) / nogo_trials
+        ## Adjust values to correct d' of infinity or -infinity
+        hit_for_dprime = (correct_licks+0.5) / (go_trials+1)
+        FA_for_dprime = (incorrect_licks+0.5) / (nogo_trials+1)
+        ## Append to dict
+        signal['hits'].append(hit_rate)
+        signal['miss'].append(miss_rate)
+        signal['FA'].append(FA_rate)
+        signal['CR'].append(CR_rate)
+        signal['dprime'].append(norm.ppf(hit_for_dprime) - norm.ppf(FA_for_dprime))
+    return signal
