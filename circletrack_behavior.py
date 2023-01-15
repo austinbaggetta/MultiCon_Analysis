@@ -822,3 +822,20 @@ def dprime_metrics(lick_data, trials, reward_one, reward_two):
         signal['CR'].append(CR_rate)
         signal['dprime'].append(norm.ppf(hit_for_dprime) - norm.ppf(FA_for_dprime))
     return signal
+
+
+def aggregate_metrics(signal, bin_size = 5):
+    """
+    Bins your hits, misses, FA, CR, and dprime according to bin_size.
+    """
+    aggregated_data = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
+    for key in signal:
+        ## Create bins
+        bins = np.arange(0, len(signal[key]), bin_size)
+        ## Bin data
+        binned = np.split(signal[key], bins)
+        ## Get average value
+        avg_value = [np.mean(bin) for bin in binned if bin.size > 0] ## if bin.size > 0 removes any empty array in binned
+        ## Assign to dict
+        aggregated_data[key] = avg_value
+    return aggregated_data
