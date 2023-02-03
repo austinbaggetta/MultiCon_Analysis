@@ -17,6 +17,7 @@ from numpy.polynomial.polynomial import polyfit
 from plotly.subplots import make_subplots
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 from scipy.stats import pearsonr, zscore, spearmanr
+from scipy.ndimage import convolve
 import itertools
 
 
@@ -45,7 +46,7 @@ def open_minian(dpath, post_process=None, return_dict=False):
     return ds
 
 
-def align_miniscope_frames(minian_timestamps, time, date, plot_frame_usage=False, down_sample = True, down_sample_factor = 2, ttl_darkness = False):
+def align_miniscope_frames(neural_activity, minian_timestamps, time, date, plot_frame_usage=False, down_sample_factor = 2, ttl_darkness = False):
     """
     Takes timestamps matrix associated with a miniscope recording and a regularly spaced time vector the expected length of the session. 
     For each timeframe in 'time', the closest frame from minian_timestamps is acquired.
@@ -68,18 +69,31 @@ def align_miniscope_frames(minian_timestamps, time, date, plot_frame_usage=False
             vector of lined up frames to use to align recording to the time vector.
     """
     ## If Minian was processed with temporal downsampling, set downsample to True so that minian_timestamps lines up with neural data
-    if down_sample:
+    if down_sample_factor is not None:
         minian_timestamps = minian_timestamps[::down_sample_factor]
     ## If ttl triggered, first 5 frames are dark, so exclude them
     if ttl_darkness:
         minian_timestamps[4:]
     ## Determine which frame is closest to the ideal time vector
+    ## If there are NaNs in minian_timestamps because the session needed to be spliced together
     if minian_timestamps['Time Stamp (ms)'].isnull().values.any():
-        minian_timestamps_dropped = minian_timestamps.dropna()
-        frames_dropped = len(minian_timestamps) - len(minian_timestamps_dropped)
-        time = time[0:-(frames_dropped + 4)] ## still trying to figure out why 4 here works - something to do with downsampling and where the timestamp.csvs are joined
+        null_values = np.where(minian_timestamps['Time Stamp (ms)'].isnull())[0]
+        idx_first = null_values[0]
+        idx_last = null_values[-1]
+        first_half = time[0:idx_first]
+        last_half = time[idx_last:]
+        time = np.concatenate((first_half,last_half))
+        ## Get the number of frames that were lost
+        difference = minian_timestamps.reset_index().loc[idx_last+1, 'Frame Number'] - minian_timestamps.reset_index().loc[idx_first-1, 'Frame Number']
+        ## Get the frames that need the difference value added to them to account for the part in the middle that is NaN
+        need_to_fix = neural_activity.frame.values[idx_first:]
+        ## Add the difference to these frames
+        neural_activity.frame.values[idx_first:] = need_to_fix + difference
     arg_mins = [np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin() for t in time]
     lined_up_timeframes = np.array(minian_timestamps['Frame Number'].values[arg_mins])
+    lined_up_milliseconds = np.array(minian_timestamps['Time Stamp (ms)'].values[arg_mins])
+    lined_up_seconds = lined_up_milliseconds / 1000
+    neural_activity = neural_activity.sel(frame=lined_up_timeframes)
 
     if plot_frame_usage:
         duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
@@ -100,10 +114,10 @@ def align_miniscope_frames(minian_timestamps, time, date, plot_frame_usage=False
         )
         fig.show(config={"scrollZoom": True})
 
-    return lined_up_timeframes
+    return lined_up_timeframes, lined_up_seconds
 
 
-def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample_further = False, downsample_factor=2, plot_frame_usage = True, frames_per_file = 1000):
+def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample_further = False, downsample_factor=2, plot_frame_usage = True):
     """
     Loads minian data and aligns the data to a regularly spaced time vector.
     Args:
@@ -150,21 +164,18 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
     ## Set miniscope path as tpath
     tpath = pjoin(path, 'Data/{}/{}/{}/miniscope'.format(mouse, date, timestamp[0]))
     minian_timestamps = pd.read_csv(tpath + "/timeStamps.csv")
-    ## Create an array that contains the number of avi files
-    miniscope_path_items = np.array(os.listdir(tpath))
-    avi_names = miniscope_path_items[['.avi' in file for file in miniscope_path_items]]
-    ## Create time vector based on frame count, which is number of avi files * 1000 (1000 frames per video), which is subtracted from total number of frames there should be based on session
+    ## Create time vector based on frame count
     if session == '20min':
-        frame_count = (len(avi_names) * (frames_per_file / downsample_factor))
+        frame_count = 20 * 60 / sampling_rate ## 20min * 60 sec/min / sampling rate
     elif session == '30min':
-        frame_count = (len(avi_names) * (frames_per_file / downsample_factor))
+        frame_count = 30 * 60 / sampling_rate
     else:
         raise Exception(
             "Invalid 'session' argument. Must be one of: ['20min', '30min']"
         )
     time = np.arange(0, frame_count * sampling_rate, sampling_rate)
     ## If you downsampled during minian processing, can change downsample_factor
-    lined_up_timeframes = align_miniscope_frames(minian_timestamps, time, date = date, plot_frame_usage = plot_frame_usage)
+    lined_up_timeframes, lined_up_seconds = align_miniscope_frames(neural_activity, minian_timestamps, time, date = date, plot_frame_usage = plot_frame_usage)
     if downsample_further:
         lined_up_timeframes = lined_up_timeframes[::downsample_factor]
     ## Select frames based on line-up timeframes
@@ -287,3 +298,11 @@ def pairwise_session_analysis(
     ## Convert list to pd.DataFrame            
     activity_summary = pd.DataFrame(activity_summary, columns = ['session_id1', 'session_id2', 'statistic', 'pvalue'])
     return activity_summary
+
+
+def moving_average(data, ksize = 5):
+    kernel = np.ones(ksize)/ksize
+    result = np.empty([data.shape[0], data.shape[1]])
+    for i in np.arange(0, data.shape[0]):
+        result[i] = convolve(input = data[i], output = 'float', weights = kernel, mode = 'nearest')
+    return result
