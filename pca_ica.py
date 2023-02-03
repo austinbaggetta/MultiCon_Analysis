@@ -10,6 +10,7 @@ vitor.lopesdossantos@pharm.ox.ac.uk).
 import warnings
 import pandas as pd
 import numpy as np
+import xarray as xr
 from scipy import stats
 from scipy import spatial
 from sklearn.decomposition import PCA
@@ -739,6 +740,8 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
     Args:
         activations : np.array
             Values from data['activations'], which is determined from the find_assemblies function.
+        trial_type : str
+            one of ['forward', 'reverse', 'all']
         x_bin_size : int
             If x == 'time', bin size in seconds
             If x == 'trial', bin size in trials
@@ -757,15 +760,18 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
             activity[i, unit > z_threshold] = unit[unit > z_threshold]
     else:
         activity = data
-    ## Bin by trial, take max activation strength within a bin
-    forward_trials, reverse_trials = ctb.forward_reverse_trials(aligned_behavior, trials)
+
     if trial_type == 'forward':
+        ## Bin by trial, take max activation strength within a bin
+        forward_trials, reverse_trials = ctb.forward_reverse_trials(aligned_behavior, trials)
         binned_activations = []
         for forward in forward_trials:
             trial_activation = activity[:, trials == forward]
             binned_activations.append(np.nanmax(trial_activation, axis = 1))
         binned_activations = np.transpose(binned_activations)
     elif trial_type == 'reverse':
+        ## Bin by trial, take max activation strength within a bin
+        forward_trials, reverse_trials = ctb.forward_reverse_trials(aligned_behavior, trials)
         binned_activations = []
         for reverse in reverse_trials:
             trial_activation = activity[:, trials == reverse]
@@ -852,7 +858,7 @@ def save_detected_ensembles(path, mouse, neural_dict, nullhyp = 'circ', n_shuffl
 
 
 
-def load_session_assemblies(mouse, spath, format = 'pickle', session_id = None):
+def load_session_assemblies_legacy(mouse, spath, format = 'pickle', session_id = None):
     """
     Load pickle files of detected assemblies.
     Args:
@@ -877,6 +883,26 @@ def load_session_assemblies(mouse, spath, format = 'pickle', session_id = None):
     ## Open pkl file
     with open(file_name, 'rb') as handle:
         assemblies = pickle.load(handle)
+    return assemblies
+
+
+def load_session_assemblies(mouse, spath, session_id):
+    """
+    Load netCDF files of detected assemblies.
+    Args:
+        mouse : str
+            mouse name
+        spath : str
+            path to pkl file
+        session_id : str
+            one of ['neutral_only', 'fear_only', 'neutral_fear', 'remaining_ensemble']
+    Returns:
+        assemblies : dict
+            dictionary of session-specific activations and patterns from PCA/ICA output
+    """
+    ## Create file name
+    file_name = pjoin(spath, 'assemblies/{}_{}.nc'.format(mouse, session_id))
+    assemblies = xr.open_dataset(file_name)
     return assemblies
 
    
