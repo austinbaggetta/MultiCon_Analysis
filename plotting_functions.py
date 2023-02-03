@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import os
 
 ## Import custom functions
 import circletrack_behavior as ctb
@@ -62,7 +63,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], marker_color = 'rgb(179,179,179)', template = 'simple_white', plot_datapoints = True):
+def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'rgb(172,78,163)', marker_color = 'rgb(179,179,179)', template = 'simple_white', plot_datapoints = True):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -94,7 +95,7 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], marker_
     fig.add_trace(go.Scatter(x = avg_data[x_var], y = avg_data[y_var],
                              mode = 'lines+markers',
                              error_y = dict(type = 'data', array = sem_data[y_var]),
-                             line = dict(color = 'rgb(172,78,163)')))
+                             line = dict(color = avg_color)))
     fig.update_layout(template = template, xaxis_title = 'Day')
     fig.update_layout(showlegend = False)
     return fig
@@ -303,6 +304,32 @@ def custom_graph_template(title, x_title, y_title, template = 'simple_white', he
     fig.update_layout(template = template, height = height, width = width)
     fig.update_yaxes(title = y_title)
     fig.update_xaxes(title = x_title)
+    fig.update_layout(title={
+        'text': title,
+        'y':0.9,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'})
+    return fig
+
+
+def plot_raster(data, bool_data, time, colorscale = 'gray_r', line_color = 'black', template = 'simple_white', x_title = 'Time (ms)', y_title = 'Neuron Number', title = '', height = 500, width = 500):
+    """
+    Creates a raster plot.
+    Args:
+        data : boolean
+            If you had binarized spikes/activation strength above a specifc value.
+            Rows could be number of neurons, for example.
+        time : list/np.array
+            x axis will be whatever units this is in
+    Returns:
+        fig
+    """
+    mean = np.mean(data, axis = 0)
+    fig = make_subplots(rows = 2, shared_xaxes = True, x_title = x_title, vertical_spacing = 0.05)
+    fig.add_trace(go.Scatter(x = time, y = mean, mode = 'lines', line_color = line_color, showlegend = False), row = 1, col = 1)
+    fig.add_trace(go.Heatmap(x = time, z = bool_data, colorscale = colorscale, showscale = False, showlegend = False), row = 2, col = 1)
+    fig.update_layout(template = template, height = height, width = width)
     fig.update_layout(title={
         'text': title,
         'y':0.9,
