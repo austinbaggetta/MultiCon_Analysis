@@ -802,11 +802,25 @@ def dprime_metrics(lick_data, trials, reward_one, reward_two):
         ## Loop through all rows of trial data
         correct_licks = 0
         incorrect_licks = 0
+        reward_one_licks = 0
+        reward_two_licks = 0
         for row in np.arange(0, len(trial_data)):
-            if (trial_data.loc[row, 'data'] == reward_one) | (trial_data.loc[row, 'data'] == reward_two):
-                correct_licks += 1
+            if (trial_data.loc[row, 'data'] == reward_one):
+                reward_one_licks += 1
+            elif (trial_data.loc[row, 'data'] == reward_two):
+                reward_two_licks += 1
             else:
                 incorrect_licks += 1
+
+        if reward_one_licks > 0:
+            correct_licks += 1
+        else:
+            correct_licks = correct_licks 
+
+        if reward_two_licks > 0:
+            correct_licks += 1
+        else:
+            correct_licks = correct_licks
         # Get rates for hits, misses, false alarms, and correct rejections.
         hit_rate = correct_licks / go_trials
         miss_rate = (go_trials - correct_licks) / go_trials
@@ -830,12 +844,27 @@ def aggregate_metrics(signal, bin_size = 5):
     """
     aggregated_data = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
     for key in signal:
-        ## Create bins
         bins = np.arange(0, len(signal[key]), bin_size)
-        ## Bin data
         binned = np.split(signal[key], bins)
-        ## Get average value
-        avg_value = [np.mean(bin) for bin in binned if bin.size > 0] ## if bin.size > 0 removes any empty array in binned
-        ## Assign to dict
+        avg_value = [np.nanmean(bin) for bin in binned if bin.size > 0] ## if bin.size > 0 removes any empty array in binned
         aggregated_data[key] = avg_value
     return aggregated_data
+
+
+def trial_averages(mouse_trial_times, session_list, forward = False):
+    """
+    Calculate the average trial time for a session across mice.
+    """
+    if not forward:
+        trial_times_df = pd.DataFrame(mouse_trial_times).T
+        avg_times = {}
+        for session in session_list:
+            times = trial_times_df[session].apply(pd.Series)
+            avg_times[session] = np.nanmean(times, axis = 0)
+    else:
+        trial_times_df = pd.DataFrame(mouse_trial_times).T
+        avg_times = {}
+        for session in session_list:
+            times = trial_times_df[session].apply(pd.Series)
+            avg_times[session] = np.nanmean(times, axis = 0)
+    return avg_times
