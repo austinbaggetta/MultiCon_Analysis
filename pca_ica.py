@@ -26,6 +26,7 @@ import pickle
 from os.path import join as pjoin
 ## Austin's custom py files
 import circletrack_behavior as ctb
+import circletrack_neural as ctn
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -97,7 +98,7 @@ def binshuffling(zactmat, significance):
 
 
 def circshuffling(zactmat, significance):
-    np.random.seed()
+    np.random.seed(42)
 
     lambdamax_ = np.zeros(significance.nshu)
     for shui in tqdm(range(significance.nshu)):
@@ -143,7 +144,7 @@ def extractPatterns(actmat, significance, method):
     elif method == "ica":
         from sklearn.decomposition import FastICA
 
-        ica = FastICA(n_components=nassemblies)
+        ica = FastICA(n_components=nassemblies, random_state = 42)
         ica.fit(actmat.T)
         patterns = ica.components_
     else:
@@ -243,6 +244,18 @@ def runPatterns(
 
 
 def computeAssemblyActivity(patterns, zactmat, zerodiag=True):
+    nassemblies = len(patterns)
+    nbins = np.size(zactmat, 1)
+    assemblyAct = np.zeros((nassemblies, nbins))
+    for (assemblyi, pattern) in enumerate(patterns):
+        projMat = np.outer(pattern, pattern)
+        if zerodiag:
+            np.fill_diagonal(projMat, 0)
+        assemblyAct[assemblyi, :] = np.diag(zactmat.T @ projMat @ zactmat)
+    return assemblyAct
+
+
+def computeAssemblyActivity_legacy(patterns, zactmat, zerodiag=True):
     nassemblies = len(patterns)
     nbins = np.size(zactmat, 1)
 
@@ -831,7 +844,7 @@ def calculate_proportions_ensembles(trends):
     return proportion_dict
 
 
-def save_detected_ensembles(path, mouse, neural_dict, nullhyp = 'circ', n_shuffles = 500):
+def save_detected_ensembles(path, mouse, neural_dict, binarize = True, smooth_factor = None, nullhyp = 'circ', n_shuffles = 500):
     """
     This function saves each output from the find_assemblies function above into a pickle file for future use.
     Args:
@@ -852,9 +865,50 @@ def save_detected_ensembles(path, mouse, neural_dict, nullhyp = 'circ', n_shuffl
             defines how many shuffling controls will be done (n/a if nullhyp is 'mp')
     """
     for key in tqdm(neural_dict):
-        assemblies = find_assemblies(neural_dict[key].values, nullhyp = nullhyp, n_shuffles = n_shuffles)
-        with open('{}/assemblies_{}_{}.pickle'.format(path, mouse, key), 'wb') as handle:
-            pickle.dump(assemblies, handle, protocol = pickle.HIGHEST_PROTOCOL)
+        if binarize:
+            neural_data = neural_dict[key].values
+            neural_data = neural_data > 0
+        else:
+            neural_data = neural_dict[key].values
+        ## Smooth data using a moving average
+        if smooth_factor is not None:
+            smoothed_data = ctn.moving_average(neural_data, ksize = smooth_factor)
+        else:
+            smoothed_data = neural_data
+        assemblies = find_assemblies(smoothed_data, nullhyp = nullhyp, n_shuffles = n_shuffles)
+        ## Save activations and patterns in the same nc file
+        act = assemblies['activations']
+        pat = assemblies['patterns']
+        ## Get length of both arrays, take the difference, and subset the longer one to the difference value
+        ## This accounts for any frame discrepancies
+        len_ensembles = act.shape[1]
+        len_frames = len(neural_dict[key].frame.values)
+        difference = len_frames - len_ensembles
+        if len_ensembles < len_frames:
+            activations = xr.DataArray(act, dims = ['en_id', 'frame'], 
+                                    coords = {'en_id': np.arange(act.shape[0]), 'frame': neural_dict[key].frame.values[:-difference]}, 
+                                    name = 'activations')
+            patterns = xr.DataArray(pat, dims = ['en_id', 'unit_id'],
+                                    coords = {'en_id': np.arange(pat.shape[0]), 'unit_id': neural_dict[key].unit_id.values},
+                                    name = 'patterns')
+        elif len_ensembles > len_frames:
+            activations = xr.DataArray(act[:, 0:-difference], dims = ['en_id', 'frame'], 
+                                    coords = {'en_id': np.arange(act.shape[0]), 'frame': neural_dict[key].frame.values}, 
+                                    name = 'activations')
+            patterns = xr.DataArray(pat, dims = ['en_id', 'unit_id'],
+                                    coords = {'en_id': np.arange(pat.shape[0]), 'unit_id': neural_dict[key].unit_id.values},
+                                    name = 'patterns')
+        else:
+            activations = xr.DataArray(act, dims = ['en_id', 'frame'], 
+                                    coords = {'en_id': np.arange(act.shape[0]), 'frame': neural_dict[key].frame.values}, 
+                                    name = 'activations')
+            patterns = xr.DataArray(pat, dims = ['en_id', 'unit_id'],
+                                    coords = {'en_id': np.arange(pat.shape[0]), 'unit_id': neural_dict[key].unit_id.values},
+                                    name = 'patterns')
+        ## Save activations and patterns to netcdf files
+        data_path = pjoin(path, '{}_{}.nc'.format(mouse, key))
+        ica_data = xr.merge([activations, patterns])
+        ica_data.to_netcdf(data_path)
 
 
 
