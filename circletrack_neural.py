@@ -89,11 +89,19 @@ def align_miniscope_frames(neural_activity, minian_timestamps, time, date, plot_
         need_to_fix = neural_activity.frame.values[idx_first:]
         ## Add the difference to these frames
         neural_activity.frame.values[idx_first:] = need_to_fix + difference
+    ## If the minian result frames are shorter than minian_timestamps, unclear why this happens in rare instances
+    if len(neural_activity.frame.values) < len(minian_timestamps):
+        last_row = len(minian_timestamps)
+        minian_timestamps = minian_timestamps.drop(minian_timestamps.index[last_row-1])
     arg_mins = [np.abs(minian_timestamps["Time Stamp (ms)"] - (t * 1000)).argmin() for t in time]
     lined_up_timeframes = np.array(minian_timestamps['Frame Number'].values[arg_mins])
     lined_up_milliseconds = np.array(minian_timestamps['Time Stamp (ms)'].values[arg_mins])
     lined_up_seconds = lined_up_milliseconds / 1000
-    neural_activity = neural_activity.sel(frame=lined_up_timeframes)
+    ## Get the last frame of the video
+    last_frame = lined_up_timeframes[-1]
+    args = np.argwhere(lined_up_timeframes == last_frame)
+    if len(args) > 3: ## if the last frame is repeated more than 3 times
+        lined_up_timeframes = lined_up_timeframes[:args[0][0]+1]
 
     if plot_frame_usage:
         duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
@@ -117,7 +125,8 @@ def align_miniscope_frames(neural_activity, minian_timestamps, time, date, plot_
     return lined_up_timeframes, lined_up_seconds
 
 
-def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spikes", sigma=None, sampling_rate=1/15, downsample_further = False, downsample_factor=2, plot_frame_usage = True):
+def load_and_align_minian(path, mouse, date, session = '20min', neural_type = 'spikes', sigma = None, sampling_rate = 1/15, 
+                          downsample_further = False, downsample_factor = 2, plot_frame_usage = True):
     """
     Loads minian data and aligns the data to a regularly spaced time vector.
     Args:
@@ -185,6 +194,39 @@ def load_and_align_minian(path, mouse, date, session = '20min', neural_type="spi
     ):  # this filtering must be done after the previous line because this converts neural_activity to numpy array
         neural_activity = gaussian_filter(neural_activity, sigma=(1, sigma))
     return neural_activity
+
+
+def minian_to_netcdf(path, mouse, date, session_id, cohort_number, session_length, sampling_rate = 1/15, down_sample_factor = 2):
+    """
+    Used to align miniscope data to a perfect time vector and subsequently save the S, C, and S_binary matrices as a combined netcdf file.
+    Args:
+        session_id : str
+            name of session (Training4, A2, etc)
+        cohort_number : str
+            used to create a coordinate in the xarray.DataArray identifying which cohort this is
+        session_length : str
+            one of ['20min', '30min']
+    Returns:
+        named netcdf file
+    """
+    ## Create save_path
+    spath = pjoin(path, 'Results/{}/{}/'.format(mouse, date))
+    timestamp = os.listdir(spath) ## get timestamp associated with that day
+    spath = pjoin(spath, '{}/processed'.format(timestamp[0])) 
+    if not os.path.exists(spath):
+        os.makedirs(spath)
+    save_path = pjoin(spath, '{}_{}.nc'.format(mouse, session_id))
+    ## Load in S, C, and create S_binary
+    S_data = load_and_align_minian(path = path, mouse = mouse, date = date, session = session_length, neural_type = 'spikes', sampling_rate = sampling_rate, 
+                                        downsample_factor = down_sample_factor, plot_frame_usage = False)
+    S_data = S_data.assign_coords(cohort = cohort_number)
+    C_data = load_and_align_minian(path = path, mouse = mouse, date = date, session = session_length, neural_type = 'traces', sampling_rate = sampling_rate, 
+                                        downsample_factor = down_sample_factor, plot_frame_usage = False)  
+    C_data = C_data.assign_coords(cohort = cohort_number)
+    S_bin = S_data > 0   
+    S_bin.name = 'S_bin'    
+    neural_data = xr.merge([C_data, S_data, S_bin])  
+    neural_data.to_netcdf(save_path)  
 
 
 def import_mouse_neural_data(path, mouse, key_file, session = '20min', neural_type = 'spikes', plot_frame_usage = False):
