@@ -955,7 +955,7 @@ def load_session_assemblies(mouse, spath, session_id):
             dictionary of session-specific activations and patterns from PCA/ICA output
     """
     ## Create file name
-    file_name = pjoin(spath, 'assemblies/{}_{}.nc'.format(mouse, session_id))
+    file_name = pjoin(spath, '{}_{}.nc'.format(mouse, session_id))
     assemblies = xr.open_dataset(file_name)
     return assemblies
 
