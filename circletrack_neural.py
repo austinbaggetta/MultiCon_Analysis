@@ -229,6 +229,37 @@ def minian_to_netcdf(path, mouse, date, session_id, cohort_number, session_lengt
     neural_data.to_netcdf(save_path)  
 
 
+def load_preprocessed_minian(path, mouse, key_file):
+    """
+    Used to load minian output saved as a netcdf files.
+    Args:
+        path : str
+            path to data
+        mouse : str
+            mouse  name
+        key_file : str
+            name of YML file containing mouse, session, and date information (mc03: Training1: '2022_09_30')
+    Returns:
+        sessions : dict
+            dictionary with keys for mouse: session: minian_data
+    """
+    sessions = {}
+    ## Load keys
+    key_path = pjoin(path, key_file)
+    with open(key_path, 'r') as stream:
+        data_loaded = yaml.safe_load(stream)
+    ## Select keys for a specific mouse
+    keys = data_loaded[mouse]
+    swapped_keys = {y[0]: x for x, y in keys.items()}
+    for date in swapped_keys:
+        dpath = pjoin(path, 'Results/{}/{}'.format(mouse, date))
+        timestamp = os.listdir(dpath) ## get timestamp associated with that day
+        rpath = pjoin(dpath, timestamp[0]) 
+        minian_path = pjoin(rpath, 'processed/{}_{}.nc'.format(mouse, swapped_keys[date]))
+        minian_data = xr.open_dataset(minian_path)
+        sessions[swapped_keys[date]] = minian_data
+    return sessions
+
 def import_mouse_neural_data(path, mouse, key_file, session = '20min', neural_type = 'spikes', plot_frame_usage = False):
     """
     Import all data for one mouse. Requires a yml file that contains session identifier keys.
