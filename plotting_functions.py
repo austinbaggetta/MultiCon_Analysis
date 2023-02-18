@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from os.path import join as pjoin
 import os
 
 ## Import custom functions
@@ -336,4 +337,20 @@ def plot_raster(data, bool_data, time, colorscale = 'gray_r', line_color = 'blac
         'x':0.5,
         'xanchor': 'center',
         'yanchor': 'top'})
+    return fig
+
+
+def plot_activation_strength(activations, ensemble_number, figure_path = None, x_bin_size = None, 
+                             title = '', y_title = 'Max Z Score', x_title = '', file_name = '', marker_color = 'red'):
+    if x_bin_size is not None:
+        time_vector = np.arange(0, activations.shape[1]*x_bin_size, x_bin_size)
+    else:
+        time_vector = np.arange(0, activations.shape[1])
+    title = title + ' - Ensemble {}'.format(ensemble_number)
+    fig = custom_graph_template(title = title, y_title = y_title, x_title = x_title)
+    fig.add_trace(go.Scatter(x = time_vector, y = activations[ensemble_number],
+                            mode = 'markers', marker_color = marker_color, opacity = 0.7))
+    fig.show()
+    if figure_path is not None:
+        fig.write_image(pjoin(figure_path, file_name))
     return fig
