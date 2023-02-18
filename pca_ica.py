@@ -21,6 +21,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pymannkendall as mk
 from statsmodels.stats.multitest import multipletests
+import pingouin as pg
 import numpy.matlib
 import pickle
 from os.path import join as pjoin
@@ -686,6 +687,39 @@ def align_activations_to_behavior(activations, aligned_behavior):
     return indexed_behavior
 
 
+def ensemble_trends_linear_regression(act, x_bin_size = 1, analysis_type = 'average_value', alpha_old = 0.05, correction = 'sidak'):
+    ## Bin activations
+    binned_activations = []
+    for ensemble in act:
+        binned_activations.append(bin_transients(ensemble[np.newaxis], x_bin_size, fps = 15, analysis_type = analysis_type, non_binary = True)[0])
+    binned_activations = np.vstack(binned_activations)
+    ## Do multiple linear corrections
+    linear_regression_dict = {}
+    for ensemble_number, ensemble_data in enumerate(binned_activations):
+        time_vector = np.arange(0, binned_activations.shape[1])
+        linear_regression_dict[ensemble_number] = pg.linear_regression(time_vector, ensemble_data, as_dataframe = False)
+    ## Correct for multiple testing
+    numtests = len(linear_regression_dict)
+    if correction == 'sidak':
+        alpha_corrected = (1 - (1 - alpha_old)**(1/numtests))
+    elif correction == 'bonferroni':
+        alpha_corrected = (1 - (alpha_old / numtests))
+    ## Loop trough all linear regression outputs, check if pvalue < alpha_corrected
+    ensemble_trends = {}
+    no_trend = {}
+    decreasing = {}
+    increasing = {}
+    for i in np.arange(0, len(linear_regression_dict)):
+        if (linear_regression_dict[i]['pval'][1] < alpha_corrected) & (linear_regression_dict[i]['coef'][1] < 0):
+            decreasing[i] = linear_regression_dict[i]
+        elif (linear_regression_dict[i]['pval'][1] < alpha_corrected) & (linear_regression_dict[i]['coef'][1] > 0):
+            increasing[i] = linear_regression_dict[i]
+        else:
+            no_trend[i] = linear_regression_dict[i]
+    ensemble_trends = {'no trend': no_trend, 'decreasing': decreasing, 'increasing': increasing}
+    return ensemble_trends
+
+
 def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_size = 1, analysis_type = 'max', zscored = True, alpha = 'sidak'):
     """"
     Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
@@ -714,7 +748,7 @@ def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_si
     else:
         activity = data
 
-    ## Bin by time, sum activation every few seconds
+    ## Bin by time
     binned_activations = []
     for unit in activity:
         binned_activations.append(bin_transients(unit[np.newaxis], x_bin_size, fps = 15, analysis_type = analysis_type, non_binary = True)[0])
@@ -803,7 +837,6 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
     ## If using sidak
     if type(alpha) is str:
         pvals = []
-        pval_thresh = 0.005
         for i, unit in enumerate(binned_activations):
             mk_test = mk.original_test(unit, alpha = 0.05)
             pvals.append(mk_test.p)
@@ -811,10 +844,11 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
             slopes[i] = mk_test.slope
             tau[i] = mk_test.Tau
         ## Correct pvalues for multiple comparisons
-        corrected_pvals = multipletests(pvals, alpha = pval_thresh, method = alpha)[1]
+        alpha_old = 0.05
+        corrected_pvals = multipletests(pvals, alpha = alpha_old, method = alpha)[1] 
         ## Loop through tuples of combined corrected pvalues and slopes
         for i, (corr_pval, slope) in enumerate(zip(corrected_pvals, slopes)):
-            if corr_pval < pval_thresh:
+            if corr_pval < alpha_old:
                 direction = 'increasing' if slope > 0 else 'decreasing'
                 trends[direction].append(i)
             else:
@@ -822,25 +856,34 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
         return trends, binned_activations, slopes, tau
 
 
-def calculate_proportions_ensembles(trends):
+def calculate_proportions_ensembles(trends, function = None):
     """
     Calculate the proportion of increasing and decreasing ensembles.
     Args:
         trends : dict
             dictionary where keys are session_ids (e.g. 'Training1') and values are dictionaries with values ['no trend', 'increasing', 'decreasing']
             trends is output of define_ensemble_trends function
+        function : str
+            either 'linear_regression' or None - depends on how fading ensembles were determined
     Returns:
         proportion_dict : dict
             dictionary where keys are session_ids and values are dictionaries containing proportions of increasing/decreasing ensembles
     """
     ## Create empty dictionary
     proportion_dict = {}
-    for key in trends:
-        num_decreasing = len(trends[key]['decreasing'])
-        num_increasing = len(trends[key]['increasing'])
-        total = num_decreasing + num_increasing + len(trends[key]['no trend'])
-        ## Append to dictionary
-        proportion_dict[key] = {'prop_increasing': num_increasing / total, 'prop_decreasing': num_decreasing / total}
+    if function == 'linear_regression':
+        num_ensembles = len(trends['no trend']) + len(trends['decreasing']) + len(trends['increasing'])
+        num_decreasing = len(trends['decreasing'])
+        num_increasing = len(trends['increasing'])
+        proportion_dict['prop_increasing'] = num_increasing / num_ensembles
+        proportion_dict['prop_decreasing'] = num_decreasing / num_ensembles
+    else:
+        for key in trends:
+            num_decreasing = len(trends[key]['decreasing'])
+            num_increasing = len(trends[key]['increasing'])
+            total = num_decreasing + num_increasing + len(trends[key]['no trend'])
+            ## Append to dictionary
+            proportion_dict[key] = {'prop_increasing': num_increasing / total, 'prop_decreasing': num_decreasing / total}
     return proportion_dict
 
 
