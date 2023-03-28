@@ -94,7 +94,7 @@ def crop_data(data):
     return df
 
 
-def get_rewarding_ports(data):
+def get_rewarding_ports(data, processed=True):
     """
     Get rewarding ports for that session.
     Args:
@@ -106,17 +106,22 @@ def get_rewarding_ports(data):
     """
     ## In more recent circle track experiments, initialization was added to easily get rewarding ports
     ## Previous experiments require assessing from rewarding licks
-    if any(data.event == 'initializing'):
-        reward_ports = data.loc[data.event == 'initializing'].reset_index(drop = True)
-        reward_first = reward_ports.data[0]
-        reward_second = reward_ports.data[1]
+    if processed:
+        rewards = data.loc[data['water'] == True]
+        reward_first, reward_second = np.unique(rewards['lick_port'])[0], np.unique(rewards['lick_port'])[1]
         return reward_first, reward_second
     else:
-        all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop = True)
-        reward_ports = pd.DataFrame(all_rewards.unique(), columns = ['data'])
-        reward_first = reward_ports.iloc[0, 0]
-        reward_second = reward_ports.iloc[1, 0]
-        return reward_first, reward_second
+        if any(data.event == 'initializing'):
+            reward_ports = data.loc[data.event == 'initializing'].reset_index(drop = True)
+            reward_first = reward_ports.data[0]
+            reward_second = reward_ports.data[1]
+            return reward_first, reward_second
+        else:
+            all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop = True)
+            reward_ports = pd.DataFrame(all_rewards.unique(), columns = ['data'])
+            reward_first = reward_ports.iloc[0, 0]
+            reward_second = reward_ports.iloc[1, 0]
+            return reward_first, reward_second
 
 
 def get_licks(data):
@@ -406,7 +411,58 @@ def set_track_and_maze(track, maze_number):
     return ports
 
 
-def align_behavior_frames(df, time, plot_frame_usage=False):
+def align_behavior_frames(df, session='20min', sampling_rate=1/15, plot_frame_usage=False):
+    """
+    Takes timestamps matrix associated with a behavior recording and a regularly spaced time vector the expected length of the session. 
+    For each timeframe in 'time', the closest frame from timestamp column is acquired. 
+    Args:
+        data : pandas.DataFrame
+            minian timestamps from preprocessing; argument set in load_and_align_minian function
+        time : list
+            regularly spaced time vector the expected length of the session; argument set in load_and_align_minian function
+        plot_frame_usage : boolean
+            if True, creates a plot of frame usage; by default set to False
+    Returns:
+        lined_up_timeframes : list
+            vector of lined up frames to use to align recording to the time vector.
+    """
+    if session == '20min':
+        frame_count = (
+            20 * 60 / sampling_rate
+        )  # 20min x 60sec/min / sampling_rate 
+    elif session == '30min':
+        frame_count = (
+            30 * 60 / sampling_rate
+        )  # 30min x 60sec/min / sampling_rate
+    else:
+        raise Exception(
+            "Invalid 'session' argument. Must be one of: ['20min', '30min']"
+        )
+    time = np.arange(0, frame_count * sampling_rate, sampling_rate)
+    arg_mins = [np.abs(df['t'] - (t)).argmin() for t in time]
+    lined_up_timeframes = np.array(df.loc[arg_mins, 'frame'])
+    behavior_df = df.loc[lined_up_timeframes]
+    if plot_frame_usage:
+        duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scattergl(
+                x=duplicated_timeframes[0],
+                y=duplicated_timeframes[1],
+                mode="lines+markers",
+                marker_size=5,
+            )
+        )
+        fig.update_layout(
+            template="simple_white",
+            xaxis_title="Time (ms)",
+            yaxis_title="Frequency",
+            title_text="Number of times each behavior frame was re-used",
+        )
+        fig.show(config={"scrollZoom": True})
+    return behavior_df
+
+def align_behavior_frames_legacy(df, time, plot_frame_usage=False):
     """
     Takes timestamps matrix associated with a behavior recording and a regularly spaced time vector the expected length of the session. 
     For each timeframe in 'time', the closest frame from timestamp column is acquired. 
@@ -509,7 +565,7 @@ def load_and_align_behavior(path, mouse, date, session = '20min', sampling_rate 
     df = pd.DataFrame(location_data)
     df['frame_number'] = range(0, len(df))
     ## Get aligned frames
-    lined_up_timeframes = align_behavior_frames(df, time, plot_frame_usage = plot_frame_usage)
+    lined_up_timeframes = align_behavior_frames_legacy(df, time, plot_frame_usage = plot_frame_usage)
     ## Select aligned frames
     aligned_behavior = df.loc[lined_up_timeframes]
     ## Downsample if minian output is downsampled
@@ -658,6 +714,36 @@ def get_trials(df, shift_factor, angle_type = 'radians', counterclockwise = True
     return trials.astype(int)
 
 
+def get_forward_reverse_trials(aligned_behavior, positive_jump = 350, wiggle = 2):
+    """
+    After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
+    Args:
+        aligned_behavior : pandas.DataFrame
+            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
+            contains x_pos, y_pos, and a_pos (angular position in degrees)
+        positive_jump : int
+            The linearized position has a large jump when the angular position resets, so we want our difference 
+            in angular position to be less than this positive jump
+        wiggle : int
+            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
+            incorrect direction due to noise. We want our difference between successive angular positions to
+            be greater than this noise.
+    Returns:
+        forward_trials, backward_trials : list
+            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
+    """
+    forward_trials = []
+    backward_trials = []
+    for trial in np.unique(aligned_behavior['trials']):
+        ## Take the difference between each angular position within a given trial to determine direction
+        diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
+        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
+        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
+            forward_trials.append(trial)
+        else:
+            backward_trials.append(trial)
+    return forward_trials, backward_trials
+
 def forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
@@ -776,7 +862,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-def dprime_metrics(lick_data, trials, reward_one, reward_two):
+def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_reverse='all'):
     """
     Calculates hits, misses, false alarms, correct rejections, and dprime.
     Args:
@@ -787,15 +873,31 @@ def dprime_metrics(lick_data, trials, reward_one, reward_two):
             output from get_trials function
         reward_one, reward_two : str
             output from get_rewarding_ports function - name of rewarding ports (reward1, reward5, for example)
+        reward_index : str
+            determines whether the reward list starts from 0 or from 1, one of ['zero', 'one']
     Returns:
         signal : dictionary
             dictionary with keys hits, miss, FA, CR, dprime   
     """
-    ## Empty dictionary
+    data['lick_port'] = data['lick_port'].astype(str)
+    ## Create nonreward list
+    if reward_index == 'zero':
+        nonreward_list = ['{}'.format(x) for x in np.arange(0, 8)]
+    elif reward_index == 'one':
+        nonreward_list = ['{}'.format(x) for x in np.arange(1, 9)]
+    nonreward_list.remove(reward_one)
+    nonreward_list.remove(reward_two)
     signal = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
-    for trial in np.unique(trials):
-        trial_data = lick_data.loc[lick_data.trial == trial].reset_index(drop = True)
-        
+    forward_trials, reverse_trials = get_forward_reverse_trials(data)
+    if forward_reverse == 'forward':
+        trial_list = forward_trials
+    elif forward_reverse == 'reverse':
+        trial_list = reverse_trials 
+    elif forward_reverse == 'all':
+        trial_list = np.unique(data['trials'])
+    for trial in trial_list:
+        trial_data = data.loc[(data['trials'] == trial) & (data['lick_port'] != '-1')].reset_index(drop=True)
+        nonreward_ports = {nonreward_list[0]: [], nonreward_list[1]: [], nonreward_list[2]: [], nonreward_list[3]: [], nonreward_list[4]: [], nonreward_list[5]: []}
         go_trials = 2 ## two rewarding ports
         nogo_trials = 6 ## 8 ports minus 2 rewarding ports
         ## Loop through all rows of trial data
@@ -803,14 +905,16 @@ def dprime_metrics(lick_data, trials, reward_one, reward_two):
         incorrect_licks = 0
         reward_one_licks = 0
         reward_two_licks = 0
-        for row in np.arange(0, len(trial_data)):
-            if (trial_data.loc[row, 'data'] == reward_one):
+        for row in np.arange(0, trial_data.shape[0]):
+            if (trial_data.loc[row, 'lick_port'] == reward_one):
                 reward_one_licks += 1
-            elif (trial_data.loc[row, 'data'] == reward_two):
+            elif (trial_data.loc[row, 'lick_port'] == reward_two):
                 reward_two_licks += 1
             else:
-                incorrect_licks += 1
-
+                for key in nonreward_ports:
+                    if (trial_data.loc[row, 'lick_port'] == key):
+                        nonreward_ports[key].append(1)
+        
         if reward_one_licks > 0:
             correct_licks += 1
         else:
@@ -820,6 +924,12 @@ def dprime_metrics(lick_data, trials, reward_one, reward_two):
             correct_licks += 1
         else:
             correct_licks = correct_licks
+
+        for key in nonreward_ports:
+            if np.sum(nonreward_ports[key]) > 0:
+                incorrect_licks += 1
+            else:
+                incorrect_licks = incorrect_licks
         # Get rates for hits, misses, false alarms, and correct rejections.
         hit_rate = correct_licks / go_trials
         miss_rate = (go_trials - correct_licks) / go_trials
@@ -867,3 +977,13 @@ def trial_averages(mouse_trial_times, session_list, forward = False):
             times = trial_times_df[session].apply(pd.Series)
             avg_times[session] = np.nanmean(times, axis = 0)
     return avg_times
+
+def calculate_trial_times(aligned_behavior, forward_trials):
+    trial_length_dict = {'trial': [], 'trial_length': []}
+    for trial in forward_trials:
+        behavior = aligned_behavior[aligned_behavior.trial == trial]
+        first, last = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
+        trial_length = last - first
+        trial_length_dict['trial'].append(trial)
+        trial_length_dict['trial_length'].append(trial_length)
+    return trial_length_dict

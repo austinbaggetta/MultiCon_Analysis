@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import pylab as pl
 import xarray as xr
@@ -25,6 +24,59 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 from scipy.signal import savgol_filter
 from sklearn.impute import SimpleImputer
+
+def define_running_epochs(aligned_behavior, velocity_thresh = 7):
+    """
+    Used to determine where a mouse is running above a given threshold.
+    Args:
+        aligned_behavior : pandas.DataFrame
+        velocity_thresh : int
+            any velocity value above this integer will be determined as running
+    Returns:
+        running : np.array
+            array of boolean values where True means mouse is running during that frame
+    """
+    delta = np.diff(np.asarray((aligned_behavior.x, aligned_behavior.y)).T, axis = 0)
+    dists = np.hypot(delta[:, 0], delta[:, 1])
+    dists = np.insert(dists, 0, 0)
+    velocity = dists / np.diff(aligned_behavior.t/1000, prepend = 0) ## in seconds
+    running = velocity > velocity_thresh
+    return running
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ############ Modified from wmau PlaceFields.py code ############
 def spatial_bin(

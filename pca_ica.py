@@ -83,7 +83,7 @@ def getlambdacontrol(zactmat_):
 
 
 def binshuffling(zactmat, significance):
-    np.random.seed()
+    np.random.seed(42)
 
     lambdamax_ = np.zeros(significance.nshu)
     for shui in range(significance.nshu):
@@ -484,7 +484,7 @@ def bin_transients(data, bin_size_in_seconds, fps=15, analysis_type = 'max', non
             Sampling rate (default takes into account 2x downsampling
             from minian).
         analysis_type : str
-            Determines what is done to the binned data - must be one of ['sum', 'average_num_spikes', 'average_value', 'max']
+            Determines what is done to the binned data - must be one of ['sum', 'average_num_spikes', 'average_value', 'max', 'median']
     Returns:
         summed: (cell, bin) array
             Number of S per cell for each bin.
@@ -516,7 +516,25 @@ def bin_transients(data, bin_size_in_seconds, fps=15, analysis_type = 'max', non
     elif analysis_type == 'max':
         max_value = [np.nanmax(bin, axis = 1) for bin in binned]
         return np.vstack(max_value).T
+    ## Get median value within a bin
+    elif analysis_type == 'median':
+        median_value = [np.nanmedian(bin, axis = 1) for bin in binned]
+        return np.vstack(median_value).T
 
+
+def bin_avg_transient(data, bin_size_seconds, fps = 15, analysis_type = 'average_value'):
+    """
+    Used if there is one average trace from a population that you want to bin.
+    """
+    if type(data) is not np.ndarray:
+        data = np.asarray(data)
+    ## Create bins
+    bins = make_bins(data, bin_size_seconds * fps)
+    binned = np.split(data, bins)
+    ## Take average within a bin
+    if analysis_type == 'average_value':
+        average_values = [np.mean(bin, axis = 0) for bin in binned]
+        return average_values
 
 def calculate_ensemble_correlation_shared(assemblies_sess1, assemblies_sess2, test = 'pearson'):
     """
@@ -720,7 +738,8 @@ def ensemble_trends_linear_regression(act, x_bin_size = 1, analysis_type = 'aver
     return ensemble_trends
 
 
-def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_size = 1, analysis_type = 'max', zscored = True, alpha = 'sidak'):
+def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_size = 1, analysis_type = 'max', 
+                                       zscored = True, correction = 'sidak', alpha_old = 0.05):
     """"
     Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
     Use the Mann Kendall test to find trends.
@@ -758,9 +777,8 @@ def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_si
     trends = {key: [] for key in ['no trend', 'decreasing', 'increasing']}
     slopes, tau = nan_array(activity.shape[0]), nan_array(activity.shape[0])
     ## If using sidak
-    if type(alpha) is str:
+    if type(correction) is str:
         pvals = []
-        pval_thresh = 0.005
         for i, unit in enumerate(binned_activations):
             mk_test = mk.original_test(unit, alpha = 0.05)
             pvals.append(mk_test.p)
@@ -768,10 +786,10 @@ def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_si
             slopes[i] = mk_test.slope
             tau[i] = mk_test.Tau
         ## Correct pvalues for multiple comparisons
-        corrected_pvals = multipletests(pvals, alpha = pval_thresh, method = alpha)[1]
+        corrected_pvals = multipletests(pvals, alpha = alpha_old, method = correction)[1]
         ## Loop through tuples of combined corrected pvalues and slopes
         for i, (corr_pval, slope) in enumerate(zip(corrected_pvals, slopes)):
-            if corr_pval < pval_thresh:
+            if corr_pval < alpha_old:
                 direction = 'increasing' if slope > 0 else 'decreasing'
                 trends[direction].append(i)
             else:
@@ -779,7 +797,26 @@ def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_si
         return trends, binned_activations, slopes, tau
 
 
-def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, trial_type = 'forward', z_threshold = None, zscored = True, alpha = 'sidak'):
+def caclulate_activity_for_trends(trial_activation, analysis_type):
+    """
+    Used in define_ensemble_trends_across_trials function to calculate either the max, mean, or median of the activations.
+    Args:
+        analysis_type : str
+            one of ['max', 'mean', 'median']
+    Returns:
+        result : np.ndarray
+    """
+    if analysis_type == 'max':
+        result = np.nanmax(trial_activation, axis = 1)
+    elif analysis_type == 'mean':
+        result = np.nanmean(trial_activation, axis = 1)
+    elif analysis_type == 'median':
+        result = np.nanmedian(trial_activation, axis = 1)
+    return result
+
+
+def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, trial_type = 'forward', 
+                                         z_threshold = None, zscored = True, correction = 'sidak', alpha_old = 0.05, analysis_type = 'max'):
     """"
     Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
     Use the Mann Kendall test to find trends.
@@ -814,7 +851,7 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
         binned_activations = []
         for forward in forward_trials:
             trial_activation = activity[:, trials == forward]
-            binned_activations.append(np.nanmax(trial_activation, axis = 1))
+            binned_activations.append(caclulate_activity_for_trends(trial_activation, analysis_type = analysis_type))
         binned_activations = np.transpose(binned_activations)
     elif trial_type == 'reverse':
         ## Bin by trial, take max activation strength within a bin
@@ -822,20 +859,20 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
         binned_activations = []
         for reverse in reverse_trials:
             trial_activation = activity[:, trials == reverse]
-            binned_activations.append(np.nanmax(trial_activation, axis = 1))
+            binned_activations.append(caclulate_activity_for_trends(trial_activation, analysis_type = analysis_type))
         binned_activations = np.transpose(binned_activations)
     elif trial_type == 'all':
         binned_activations = []
         for trial in np.unique(trials):
             trial_activation = activity[:, trials == trial]
-            binned_activations.append(np.nanmax(trial_activation, axis = 1))
+            binned_activations.append(caclulate_activity_for_trends(trial_activation, analysis_type = analysis_type))
         binned_activations = np.transpose(binned_activations)
 
     ## Group ensembles into increasing, decreasing, or no trend
     trends = {key: [] for key in ['no trend', 'decreasing', 'increasing']}
     slopes, tau = nan_array(activity.shape[0]), nan_array(activity.shape[0])
     ## If using sidak
-    if type(alpha) is str:
+    if type(correction) is str:
         pvals = []
         for i, unit in enumerate(binned_activations):
             mk_test = mk.original_test(unit, alpha = 0.05)
@@ -844,8 +881,7 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
             slopes[i] = mk_test.slope
             tau[i] = mk_test.Tau
         ## Correct pvalues for multiple comparisons
-        alpha_old = 0.05
-        corrected_pvals = multipletests(pvals, alpha = alpha_old, method = alpha)[1] 
+        corrected_pvals = multipletests(pvals, alpha = alpha_old, method = correction)[1] 
         ## Loop through tuples of combined corrected pvalues and slopes
         for i, (corr_pval, slope) in enumerate(zip(corrected_pvals, slopes)):
             if corr_pval < alpha_old:
@@ -892,7 +928,7 @@ def save_detected_ensembles(path, mouse, neural_dict, binarize = True, smooth_fa
     This function saves each output from the find_assemblies function above into a pickle file for future use.
     Args:
         path : str
-            path to where you want the pickle files to be stored
+            path to where you want the nc file to be stored
         mouse : str
             mouse name
         neural_dict : dictionary
