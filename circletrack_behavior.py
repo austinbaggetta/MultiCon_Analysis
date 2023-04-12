@@ -94,7 +94,7 @@ def crop_data(data):
     return df
 
 
-def get_rewarding_ports(data, processed=True):
+def get_rewarding_ports(data, processed=False):
     """
     Get rewarding ports for that session.
     Args:
@@ -714,36 +714,6 @@ def get_trials(df, shift_factor, angle_type = 'radians', counterclockwise = True
     return trials.astype(int)
 
 
-def get_forward_reverse_trials(aligned_behavior, positive_jump = 350, wiggle = 2):
-    """
-    After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
-    Args:
-        aligned_behavior : pandas.DataFrame
-            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
-            contains x_pos, y_pos, and a_pos (angular position in degrees)
-        positive_jump : int
-            The linearized position has a large jump when the angular position resets, so we want our difference 
-            in angular position to be less than this positive jump
-        wiggle : int
-            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
-            incorrect direction due to noise. We want our difference between successive angular positions to
-            be greater than this noise.
-    Returns:
-        forward_trials, backward_trials : list
-            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
-    """
-    forward_trials = []
-    backward_trials = []
-    for trial in np.unique(aligned_behavior['trials']):
-        ## Take the difference between each angular position within a given trial to determine direction
-        diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
-        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
-        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
-            forward_trials.append(trial)
-        else:
-            backward_trials.append(trial)
-    return forward_trials, backward_trials
-
 def forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
@@ -862,7 +832,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_reverse='all'):
+def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_reverse='all', **kwargs):
     """
     Calculates hits, misses, false alarms, correct rejections, and dprime.
     Args:
@@ -879,16 +849,16 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
         signal : dictionary
             dictionary with keys hits, miss, FA, CR, dprime   
     """
-    data['lick_port'] = data['lick_port'].astype(str)
+    # data['lick_port'] = data['lick_port'].astype(str)
     ## Create nonreward list
     if reward_index == 'zero':
-        nonreward_list = ['{}'.format(x) for x in np.arange(0, 8)]
+        nonreward_list = [x for x in np.arange(0, 8)]
     elif reward_index == 'one':
-        nonreward_list = ['{}'.format(x) for x in np.arange(1, 9)]
+        nonreward_list = [x for x in np.arange(1, 9)]
     nonreward_list.remove(reward_one)
     nonreward_list.remove(reward_two)
     signal = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
-    forward_trials, reverse_trials = get_forward_reverse_trials(data)
+    forward_trials, reverse_trials = get_forward_reverse_trials(data, **kwargs)
     if forward_reverse == 'forward':
         trial_list = forward_trials
     elif forward_reverse == 'reverse':
@@ -896,7 +866,7 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
     elif forward_reverse == 'all':
         trial_list = np.unique(data['trials'])
     for trial in trial_list:
-        trial_data = data.loc[(data['trials'] == trial) & (data['lick_port'] != '-1')].reset_index(drop=True)
+        trial_data = data.loc[(data['trials'] == trial) & (data['lick_port'] != -1)].reset_index(drop=True)
         nonreward_ports = {nonreward_list[0]: [], nonreward_list[1]: [], nonreward_list[2]: [], nonreward_list[3]: [], nonreward_list[4]: [], nonreward_list[5]: []}
         go_trials = 2 ## two rewarding ports
         nogo_trials = 6 ## 8 ports minus 2 rewarding ports
@@ -987,3 +957,78 @@ def calculate_trial_times(aligned_behavior, forward_trials):
         trial_length_dict['trial'].append(trial)
         trial_length_dict['trial_length'].append(trial_length)
     return trial_length_dict
+
+### Adding new functions here - these functions definitely work on preprocessed behavior
+def lick_accuracy(df, port_one, port_two, by_trials=False):
+    """
+    Used to calculate the first lick percent correct.
+    Args:
+        df : pandas.DataFrame
+            preprocessed behavior containing columns for trials, lick_ports
+        port_one, port_two : int
+            which ports were rewarded (e.g. 5)
+        by_trials : boolean
+            if True, will calculate the first lick percent correct within a trial. By default False.
+    Returns:
+        percent_correct : float or list
+            returns a single value when not calculated on a trial by trial basis
+    """
+    if by_trials:
+        percent_correct = []
+        for trial in np.unique(df['trials']):
+                trial_behav = df[df['trials'] == trial]
+                licks = trial_behav[trial_behav['lick_port'] != -1].reset_index(drop=True)
+                licks.insert(loc=6, 
+                            column='shifted', 
+                            value=licks['lick_port'].shift(periods=1, fill_value='first'))
+                licks.insert(loc=7, 
+                            column='first', 
+                            value=licks['lick_port'] != licks['shifted'])
+                licks_df = licks[licks['first']].reset_index(drop=True)
+                count_licks = licks_df.groupby('lick_port', as_index=False).agg(first_licks=('lick_port', 'count'))
+                percent_correct.append(((count_licks['first_licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
+                                        count_licks['first_licks'].dropna().sum()) * 100)
+    else:
+        licks = df[df['lick_port'] != -1].reset_index(drop=True)
+        licks.insert(loc=6, 
+                    column='shifted', 
+                    value=licks['lick_port'].shift(periods=1, fill_value='first'))
+        licks.insert(loc=7, 
+                    column='first', 
+                    value=licks['lick_port'] != licks['shifted'])
+        licks_df = licks[licks['first']].reset_index(drop=True)
+        count_licks = licks_df.groupby('lick_port', as_index=False).agg(first_licks=('lick_port', 'count'))
+        percent_correct = ((count_licks['first_licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
+                            count_licks['first_licks'].dropna().sum()) * 100
+    return percent_correct
+
+
+def get_forward_reverse_trials(aligned_behavior, positive_jump = 350, wiggle = 2):
+    """
+    After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
+    Args:
+        aligned_behavior : pandas.DataFrame
+            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
+            contains x_pos, y_pos, and a_pos (angular position in degrees)
+        positive_jump : int
+            The linearized position has a large jump when the angular position resets, so we want our difference 
+            in angular position to be less than this positive jump
+        wiggle : int
+            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
+            incorrect direction due to noise. We want our difference between successive angular positions to
+            be greater than this noise.
+    Returns:
+        forward_trials, backward_trials : list
+            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
+    """
+    forward_trials = []
+    backward_trials = []
+    for trial in np.unique(aligned_behavior['trials']):
+        ## Take the difference between each angular position within a given trial to determine direction
+        diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
+        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
+        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
+            forward_trials.append(trial)
+        else:
+            backward_trials.append(trial)
+    return forward_trials, backward_trials
