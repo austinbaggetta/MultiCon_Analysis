@@ -9,6 +9,20 @@ import os
 import circletrack_behavior as ctb
 
 
+def custom_graph_template(title, x_title, y_title, template = 'simple_white', height = 500, width = 500):
+    fig = go.Figure()
+    fig.update_layout(template = template, height = height, width = width)
+    fig.update_yaxes(title = y_title)
+    fig.update_xaxes(title = x_title)
+    fig.update_layout(title={
+        'text': title,
+        'y':0.9,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'})
+    return fig
+
+
 def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
                             line_width = 1.5, boundary_color = 'red', template = 'simple_white', width = 800, height = 800):
     """
@@ -64,7 +78,8 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'rgb(172,78,163)', marker_color = 'rgb(179,179,179)', template = 'simple_white', plot_datapoints = True):
+def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', 
+                              marker_color = 'rgb(179,179,179)', plot_datapoints = True, plot_transitions=True, **kwargs):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -86,19 +101,23 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
     ## Calculate SEM for each day
     sem_data = data.groupby(groupby_var, as_index = False).sem()
     ## Create figure
-    fig = go.Figure()
+    fig = custom_graph_template(**kwargs)
     if plot_datapoints:
         ## Plot individual subjects
         fig.add_trace(go.Scatter(x = data[x_var], y = data[y_var],
-                                mode = 'markers', opacity = 0.5,
+                                mode = 'markers', opacity = 0.5, 
                                 marker = dict(color = marker_color, line = dict(width = 1))))
     ## Plot group average
     fig.add_trace(go.Scatter(x = avg_data[x_var], y = avg_data[y_var],
                              mode = 'lines+markers',
                              error_y = dict(type = 'data', array = sem_data[y_var]),
                              line = dict(color = avg_color)))
-    fig.update_layout(template = template, xaxis_title = 'Day')
+    if y_var == 'percent_correct':
+        fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=marker_color, opacity=1)
     fig.update_layout(showlegend = False)
+    if plot_transitions:
+        for value in [5.5, 10.5, 15.5]:
+            fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=marker_color, opacity=1)
     return fig
 
 
@@ -216,8 +235,8 @@ def plot_cell_contribution(assemblies, colorscale = 'Viridis', template = 'simpl
     fig.show(config={'scrollZoom':True})
 
 
-def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue', title = '', nonmem_color = 'black', hline_color = 'black', 
-              size = 2, opacity = 0.5, height = 800, width = 800, template = 'simple_white'):
+def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue', nonmem_color = 'black', 
+              hline_color = 'black', size = 2, opacity = 0.5, **kwargs):
     """
     Create a stem plot, where the marker indicates the weight of that neuron in this ensemble. Members of the ensemble are plotted in a separate color.
     Args:
@@ -253,7 +272,7 @@ def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue',
     ## Create dataframe
     df = pd.DataFrame(temp_dict)
     ## Plot figure
-    fig = go.Figure()
+    fig = custom_graph_template(**kwargs)
     for neuron in np.arange(0, n_neurons):
         if df.participants[neuron] == True:
             fig.add_trace(go.Scatter(x = [df['location'][neuron], df['location'][neuron]], y = [0, df['head'][neuron]], mode = 'lines+markers', 
@@ -263,11 +282,6 @@ def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue',
                           line=dict(width=1, color=nonmem_color), marker=dict(color=nonmem_color), opacity = opacity))
     ## Change marker size, change template, add x/y titles, title, and horizontal line at zero
     fig.update_traces(marker=dict(size = size))
-    fig.update_layout(template = template, height = height, width = width, showlegend = False, xaxis_title = 'Neuron', yaxis_title = 'Weight')
-    fig.update_layout(title = {'text': title,
-                            'xanchor': 'center',
-                            'y' : 0.9,
-                            'x' : 0.5})
     fig.add_hline(y = baseline, line_dash = 'solid', opacity = 1, line_width = 1, line_color = hline_color)
     return fig
 
@@ -300,21 +314,8 @@ def plot_linearized_position(aligned_behavior, trials, forward_trials, reverse_t
     return fig
 
 
-def custom_graph_template(title, x_title, y_title, template = 'simple_white', height = 500, width = 500):
-    fig = go.Figure()
-    fig.update_layout(template = template, height = height, width = width)
-    fig.update_yaxes(title = y_title)
-    fig.update_xaxes(title = x_title)
-    fig.update_layout(title={
-        'text': title,
-        'y':0.9,
-        'x':0.5,
-        'xanchor': 'center',
-        'yanchor': 'top'})
-    return fig
-
-
-def plot_raster(data, bool_data, time, colorscale = 'gray_r', line_color = 'black', template = 'simple_white', x_title = 'Time (ms)', y_title = 'Neuron Number', title = '', height = 500, width = 500):
+def plot_raster(data, bool_data, time, colorscale = 'gray_r', line_color = 'black', template = 'simple_white', 
+                x_title = 'Time (ms)', y_title = 'Neuron Number', title = '', height = 500, width = 500):
     """
     Creates a raster plot.
     Args:
@@ -353,4 +354,30 @@ def plot_activation_strength(activations, ensemble_number, figure_path = None, x
     fig.show()
     if figure_path is not None:
         fig.write_image(pjoin(figure_path, file_name))
+    return fig
+
+
+def plot_lick_raster(behav, symbol='square', plot_reward=True, lick_color='grey', reward_color='turquoise', **kwargs):
+    fig = custom_graph_template(**kwargs)
+    for i, trial in enumerate(np.unique(behav['trials'])):
+        trial_df = pd.DataFrame()
+        trial_df = behav.loc[behav['trials'] == trial]
+        trial_df.insert(0, 'lick_bool', trial_df['lick_port'] != -1)
+        fig.add_trace(go.Scatter(x=trial_df['lin_position'][trial_df['lick_bool']], y=(i + 1) * trial_df['lick_bool'][trial_df['lick_bool']], mode='markers', 
+                                marker=dict(symbol = symbol, color = lick_color, opacity = 0.8, size = 5), showlegend=False))
+        if plot_reward:
+            fig.add_trace(go.Scatter(x=trial_df['lin_position'][trial_df['water']], y=(i + 1) * trial_df['water'][trial_df['water']], mode='markers',
+                                     marker=dict(symbol = symbol, color = reward_color, opacity = 1, size = 3), showlegend=False))
+    return fig
+
+
+def plot_circle_position(behav, position_color='grey', position_size=4, lick_color='turquoise', lick_size=4, downsample_factor=15, plot_licks=True, **kwargs):
+    behav.insert(0, 'lick_bool', behav['lick_port'] != -1)
+    fig = custom_graph_template(**kwargs)
+    fig.add_trace(go.Scatter(x=behav['x'][::downsample_factor], y=behav['y'][::downsample_factor], mode='markers', 
+                            marker=dict(color = position_color, size = position_size), showlegend=False))
+    if plot_licks:
+        lick_x = behav['x'][behav['lick_bool']]
+        lick_y = behav['y'][behav['lick_bool']]
+        fig.add_trace(go.Scatter(x=lick_x, y=lick_y, mode='markers', marker=dict(color = lick_color, size = lick_size), name='Lick'))
     return fig
