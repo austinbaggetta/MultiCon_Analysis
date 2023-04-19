@@ -72,7 +72,7 @@ session_dict = {
 behavior_path = "../../EnsembleRemodeling_Resubmission/circletrack_data"
 output_path = "../../EnsembleRemodeling_Resubmission/circletrack_data/output/behav"
 cohort_number = "cohort1"
-mouse_list = ["mc06", "mc07", "mc09", "mc11"]
+mouse_list = ["mc03", "mc06", "mc07", "mc09", "mc11"]
 ## Set relative path variable for circletrack behavior data
 path = pjoin(behavior_path, "Data/**/**/**/circle_track.csv")
 ## Set str2match variable (regex for mouse name)
@@ -94,7 +94,14 @@ for mouse in tqdm(mouse_list):
     subset = ctb.subset_combined(combined_list, mouse).reset_index(drop=True)
     subset = sorted(subset, key=natsort_key)
     for i, session in tqdm(enumerate(session_dict[mouse]), leave=False):
+        print(session)
         circle_track = pd.read_csv(subset[i])
+        rewards = circle_track.loc[circle_track['event'] == 'initializing', 'data'].tolist()
+        for idx in np.arange(0, len(circle_track['event'])):
+            if 'probe' in circle_track['event'][idx]:
+                probe_end = float(re.search('probe length: ([0-9]+)', circle_track['event'][idx])[1])
+            else:
+                next
         circle_track = ctb.crop_data(circle_track)
         circle_track = ctb.normalize_timestamp(circle_track).reset_index(drop=True)
         circle_track["frame"] = np.arange(len(circle_track))
@@ -130,10 +137,13 @@ for mouse in tqdm(mouse_list):
         data_out["lin_position"] = ctb.linearize_trajectory(
             data_out, angle_type="radians", shift_factor=0
         )
+        data_out[['reward_one', 'reward_two']] = int(rewards[0][-1]), int(rewards[1][-1])
         data_out = (
             data_out.drop(columns=["event", "data"])
             .rename(columns={"timestamp": "t"})
             .reset_index(drop=True)
         )
+        data_out['probe'] = data_out['t'] < probe_end
         result_path = pjoin(output_path, mouse)
         data_out.to_feather(pjoin(result_path, "{}_{}.feat".format(mouse, session)))
+# %%
