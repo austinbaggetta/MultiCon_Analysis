@@ -79,7 +79,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
 
 
 def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', 
-                              marker_color = 'rgb(179,179,179)', plot_datapoints = True, plot_transitions=True, **kwargs):
+                              marker_color = 'rgb(179,179,179)', plot_datapoints = True, plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -104,9 +104,11 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
     fig = custom_graph_template(**kwargs)
     if plot_datapoints:
         ## Plot individual subjects
-        fig.add_trace(go.Scatter(x = data[x_var], y = data[y_var],
-                                mode = 'markers', opacity = 0.5, 
-                                marker = dict(color = marker_color, line = dict(width = 1))))
+        for subject in np.unique(data['mouse']):
+            data_sub = data.loc[data['mouse'] == subject]
+            fig.add_trace(go.Scatter(x = data_sub[x_var], y = data_sub[y_var],
+                                    mode = 'markers', opacity = 0.5, 
+                                    marker = dict(color = marker_color, line = dict(width = 1)), name=subject))
     ## Plot group average
     fig.add_trace(go.Scatter(x = avg_data[x_var], y = avg_data[y_var],
                              mode = 'lines+markers',
@@ -115,8 +117,8 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
     if y_var == 'percent_correct':
         fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=marker_color, opacity=1)
     fig.update_layout(showlegend = False)
-    if plot_transitions:
-        for value in [5.5, 10.5, 15.5]:
+    if plot_transitions is not None:
+        for value in plot_transitions:
             fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=marker_color, opacity=1)
     return fig
 
