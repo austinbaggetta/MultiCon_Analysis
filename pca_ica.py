@@ -807,15 +807,15 @@ def caclulate_activity_for_trends(trial_activation, analysis_type):
         result : np.ndarray
     """
     if analysis_type == 'max':
-        result = np.nanmax(trial_activation, axis = 1)
+        result = np.nanmax(trial_activation, axis=1)
     elif analysis_type == 'mean':
-        result = np.nanmean(trial_activation, axis = 1)
+        result = np.nanmean(trial_activation, axis=1)
     elif analysis_type == 'median':
-        result = np.nanmedian(trial_activation, axis = 1)
+        result = np.nanmedian(trial_activation, axis=1)
     return result
 
 
-def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, trial_type = 'forward', 
+def define_ensemble_trends_across_trials_legacy(activations, aligned_behavior, trials, trial_type = 'forward', 
                                          z_threshold = None, zscored = True, correction = 'sidak', alpha_old = 0.05, analysis_type = 'max'):
     """"
     Find assembly "trends", whether they are increasing/decreasing in occurrence rate over the course of a session. 
@@ -890,6 +890,74 @@ def define_ensemble_trends_across_trials(activations, aligned_behavior, trials, 
             else:
                 trends['no trend'].append(i)
         return trends, binned_activations, slopes, tau
+    
+
+def define_ensemble_trends_across_trials(act, behav, trial_type='forward', analysis='max', zscored=True, correction='sidak', alpha_old=0.05, **kwargs):
+    """ 
+    Use Mann-Kendall test to determine if coordinated activity is increasing/decreasing across a session.
+    Args:
+        act : np.array 
+            values from data['activations'], which is determined from find_assemblies function
+        behav : pandas.DataFrame
+            processed behavior output
+        trial_type : str
+            one of ['forward', 'reverse', 'all']; forward by default
+        analysis : str
+            one of ['max', 'mean', 'median']; max by default
+        zscored : boolean
+            will zscore data if true; by default true
+        correction : str
+            used for multiple testing correction, one of ['sidak']; by default sidak
+        alpha_old : float
+            set the alpha value prior to correction; by default 0.05
+        **kwargs
+            additional arguments for get_forward_reverse_trials function, which are positive_jump and wiggle
+    Returns:
+        trends, binned_act, slopes, tau
+    """
+    if zscored:
+        activity = zscore(act, nan_policy='omit', axis=1)
+    else:
+        activity = act 
+    
+    if (trial_type == 'forward') | (trial_type == 'reverse'):
+        forward_trials, reverse_trials = ctb.get_forward_reverse_trials(behav, **kwargs)
+        if trial_type == 'forward':
+            trials = forward_trials 
+        elif trial_type == 'reverse':
+            trials = reverse_trials 
+    elif trial_type == 'all':
+        trials = np.unique(behav['trials'])
+    else:
+        print('Error! Must be one of forward, reverse, or all.')
+    
+    binned_act = []
+    for trial in trials:
+        trial_act = activity[:, behav['trials'] == trial]
+        binned_act.append(caclulate_activity_for_trends(trial_act, analysis_type=analysis))
+    binned_act = np.transpose(binned_act)
+
+    trends = {key: [] for key in ['no trend', 'decreasing', 'increasing']}
+    slopes, tau = nan_array(activity.shape[0]), nan_array(activity.shape[0])
+    ## If using sidak
+    if type(correction) is str:
+        pvals = []
+        for i, unit in enumerate(binned_act):
+            mk_test = mk.original_test(unit, alpha = 0.05)
+            pvals.append(mk_test.p)
+
+            slopes[i] = mk_test.slope
+            tau[i] = mk_test.Tau
+        ## Correct pvalues for multiple comparisons
+        corrected_pvals = multipletests(pvals, alpha = alpha_old, method = correction)[1] 
+        ## Loop through tuples of combined corrected pvalues and slopes
+        for i, (corr_pval, slope) in enumerate(zip(corrected_pvals, slopes)):
+            if corr_pval < alpha_old:
+                direction = 'increasing' if slope > 0 else 'decreasing'
+                trends[direction].append(i)
+            else:
+                trends['no trend'].append(i)
+        return trends, binned_act, slopes, tau
 
 
 def calculate_proportions_ensembles(trends, function = None):

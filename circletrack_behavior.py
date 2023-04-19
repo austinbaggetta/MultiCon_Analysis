@@ -441,7 +441,7 @@ def align_behavior_frames(df, session='20min', sampling_rate=1/15, plot_frame_us
     time = np.arange(0, frame_count * sampling_rate, sampling_rate)
     arg_mins = [np.abs(df['t'] - (t)).argmin() for t in time]
     lined_up_timeframes = np.array(df.loc[arg_mins, 'frame'])
-    behavior_df = df.loc[lined_up_timeframes]
+    behav = df.loc[arg_mins]
     if plot_frame_usage:
         duplicated_timeframes = np.unique(lined_up_timeframes, return_counts=True)
         fig = go.Figure()
@@ -460,7 +460,7 @@ def align_behavior_frames(df, session='20min', sampling_rate=1/15, plot_frame_us
             title_text="Number of times each behavior frame was re-used",
         )
         fig.show(config={"scrollZoom": True})
-    return behavior_df
+    return behav
 
 def align_behavior_frames_legacy(df, time, plot_frame_usage=False):
     """
@@ -832,6 +832,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
+### Adding new functions here - these functions definitely work on preprocessed behavior
 def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_reverse='all', **kwargs):
     """
     Calculates hits, misses, false alarms, correct rejections, and dprime.
@@ -858,10 +859,11 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
     nonreward_list.remove(reward_one)
     nonreward_list.remove(reward_two)
     signal = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
-    forward_trials, reverse_trials = get_forward_reverse_trials(data, **kwargs)
     if forward_reverse == 'forward':
+        forward_trials, _ = get_forward_reverse_trials(data, **kwargs)
         trial_list = forward_trials
     elif forward_reverse == 'reverse':
+        _, reverse_trials = get_forward_reverse_trials(data, **kwargs)
         trial_list = reverse_trials 
     elif forward_reverse == 'all':
         trial_list = np.unique(data['trials'])
@@ -958,7 +960,7 @@ def calculate_trial_times(aligned_behavior, forward_trials):
         trial_length_dict['trial_length'].append(trial_length)
     return trial_length_dict
 
-### Adding new functions here - these functions definitely work on preprocessed behavior
+
 def lick_accuracy(df, port_one, port_two, by_trials=False):
     """
     Used to calculate the first lick percent correct.
@@ -1032,3 +1034,23 @@ def get_forward_reverse_trials(aligned_behavior, positive_jump = 350, wiggle = 2
         else:
             backward_trials.append(trial)
     return forward_trials, backward_trials
+
+
+def fix_lick_ports(behav, reward_one, reward_two):
+    """
+    Used to fix lick port identity when water == True in cohort0's behavior dataframe.
+    Args:
+        behav : pandas.DataFrame
+        reward_one, reward_two : numpy.int64
+    Returns:
+        behav : pandas.DataFrame
+    """
+    r1_min, r1_max = np.min(behav['lin_position'][behav['lick_port'] == reward_one]), np.max(behav['lin_position'][behav['lick_port'] == reward_one])
+    r2_min, r2_max = np.min(behav['lin_position'][behav['lick_port'] == reward_two]), np.max(behav['lin_position'][behav['lick_port'] == reward_two])
+    for idx in np.arange(0, len(behav)):
+        if (behav.loc[idx, 'water'] == True) & (behav.loc[idx, 'lick_port'] == -1):
+            if (behav.loc[idx, 'lin_position'] >= r1_min) | (behav.loc[idx, 'lin_position'] <= r1_max):
+                behav.loc[idx] = behav.loc[idx].replace(to_replace={-1: reward_one})
+            elif (behav.loc[idx, 'lin_position'] >= r2_min) | (behav.loc[idx, 'lin_position'] <= r2_max):
+                behav.loc[idx] = behav.loc[idx].replace(to_replace={-1: reward_two})
+    return behav
