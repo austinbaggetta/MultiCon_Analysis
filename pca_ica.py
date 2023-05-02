@@ -484,7 +484,7 @@ def bin_transients(data, bin_size_in_seconds, fps=15, analysis_type = 'max', non
             Sampling rate (default takes into account 2x downsampling
             from minian).
         analysis_type : str
-            Determines what is done to the binned data - must be one of ['sum', 'average_num_spikes', 'average_value', 'max', 'median']
+            Determines what is done to the binned data - must be one of ['sum', 'num_spikes', 'average_value', 'max', 'median']
     Returns:
         summed: (cell, bin) array
             Number of S per cell for each bin.
@@ -504,10 +504,10 @@ def bin_transients(data, bin_size_in_seconds, fps=15, analysis_type = 'max', non
         else:
             summed = [np.sum(bin > 0, axis=1) for bin in binned]
         return np.vstack(summed).T
-    ## Take the mean of the number of spikes within a bin
-    elif analysis_type == 'average_num_spikes':
-        average_spikes = [np.mean(bin > 0, axis = 1) for bin in binned]
-        return np.vstack(average_spikes).T
+    ## Get the number of spikes within a bin
+    elif analysis_type == 'num_spikes':
+        num_spikes = [np.count_nonzero(bin, axis=1) for bin in binned]
+        return np.vstack(num_spikes).T
     ## Get the mean value of a bin
     elif analysis_type == 'average_value':
         average_value = [np.mean(bin, axis = 1) for bin in binned]

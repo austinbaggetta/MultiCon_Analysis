@@ -19,6 +19,23 @@ from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 from scipy.stats import pearsonr, zscore, spearmanr
 from scipy.ndimage import convolve
 import itertools
+## Austin's custom py files
+import pca_ica as ica
+
+
+def get_seconds(time_str, character='_'):
+    """
+    Takes the timestamp from the computer format and converts to seconds.
+    Args:
+        time_str : str
+            folder timestamp
+        character : str
+            character that separates the hh_mm_ss (hh:mm:ss)
+    Returns:
+        seconds : int
+    """
+    hh, mm, ss = time_str.split(character)
+    return int(hh) * 3600 * int(mm) * 60 + int(ss)
 
 
 def open_minian(dpath, post_process=None, return_dict=False):
@@ -379,3 +396,47 @@ def moving_average(data, ksize = 5):
     for i in np.arange(0, data.shape[0]):
         result[i] = convolve(input = data[i], output = 'float', weights = kernel, mode = 'nearest')
     return result
+
+
+def calculate_event_rates(data, bin_size_sec, fps=15, zscore=False):
+    """
+    Calculate event rate.
+    Args: 
+    Returns:
+        event_rates : np.array
+            event rate of each cell within each time bin, cell x bin array
+    """
+    if zscore:
+        activity = zscore(data, axis=1) ## z-score each cell
+    else:
+        activity = data
+    num_spikes = ica.bin_transients(activity, bin_size_sec, fps=fps, analysis_type='num_spikes')
+    event_rates = num_spikes / bin_size_sec
+    return event_rates
+
+
+def cell_quantiles(cell_array, quantile, test, quantile_lower=None):
+    """
+    Get indices of cells that satisfy the given condition.
+    Args:
+        cell_array : numpy.ndarray
+            array of cell values; for example, average event rates for cells
+        quantile : float
+            quantile, will get cells whose activity is above or below this value
+        test : str
+            greater than, less than, within
+        quantile_lower : float
+            by default None; only needed if test == 'within'
+    Returns:
+        output : numpy.ndarray
+            cell indices that satisfy conditions
+    """
+    if test == 'greater_than':
+        output = np.where(cell_array > np.quantile(cell_array, quantile))[0]
+    elif test == 'less_than':
+        output = np.where(cell_array < np.quantile(cell_array, quantile))[0]
+    elif test == 'within':
+        output = np.where((cell_array < quantile) & (cell_array > quantile_lower))[0]
+    else:
+        print('Must be greater_than, less_than, or within!')
+    return output

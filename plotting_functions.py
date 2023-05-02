@@ -10,6 +10,9 @@ import circletrack_behavior as ctb
 
 
 def custom_graph_template(title, x_title, y_title, template = 'simple_white', height = 500, width = 500):
+    """
+    Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
+    """
     fig = go.Figure()
     fig.update_layout(template = template, height = height, width = width)
     fig.update_yaxes(title = y_title)
@@ -21,6 +24,21 @@ def custom_graph_template(title, x_title, y_title, template = 'simple_white', he
         'xanchor': 'center',
         'yanchor': 'top'})
     return fig
+
+
+def colors(group):
+    """
+    Used to define colors for specific groupings. Can easily change colors here and will propogate to graphs.
+    Args:
+        group : str
+            one of ['pre', 'session', 'post']
+    """
+    if group == 'pre':
+        return 'darkgrey'
+    elif group == 'session':
+        return 'rgb(118,78,159)'
+    elif group == 'post':
+        return 'turquoise'
 
 
 def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
@@ -374,7 +392,10 @@ def plot_lick_raster(behav, symbol='square', plot_reward=True, lick_color='grey'
 
 
 def plot_circle_position(behav, position_color='grey', position_size=4, lick_color='turquoise', lick_size=4, downsample_factor=15, plot_licks=True, **kwargs):
-    behav.insert(0, 'lick_bool', behav['lick_port'] != -1)
+    try:
+        behav.insert(0, 'lick_bool', behav['lick_port'] != -1)
+    except:
+        pass
     fig = custom_graph_template(**kwargs)
     fig.add_trace(go.Scatter(x=behav['x'][::downsample_factor], y=behav['y'][::downsample_factor], mode='markers', 
                             marker=dict(color = position_color, size = position_size), showlegend=False))
