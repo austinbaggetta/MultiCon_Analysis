@@ -9,16 +9,16 @@ import os
 import circletrack_behavior as ctb
 
 
-def custom_graph_template(title, x_title, y_title, template = 'simple_white', height = 500, width = 500):
+def custom_graph_template(x_title, y_title, template = 'simple_white', height = 500, width = 500,
+                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False):
     """
     Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
     """
-    fig = go.Figure()
+    fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, shared_xaxes=shared_x)
     fig.update_layout(template = template, height = height, width = width)
     fig.update_yaxes(title = y_title)
     fig.update_xaxes(title = x_title)
     fig.update_layout(title={
-        'text': title,
         'y':0.9,
         'x':0.5,
         'xanchor': 'center',
