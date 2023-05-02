@@ -63,6 +63,8 @@ behavior_path = "../../../MultiCon_AfterHours/MultiCon_EEG1/circletrack_data"
 output_path = "../../../MultiCon_AfterHours/MultiCon_EEG1/output/behav"
 cohort_number = 'cohort0'
 mouse_list = ['mc_EEG1_01', 'mc_EEG1_02']
+sampling_rate = 1/30 ## started keeping minian output at 1/30
+frame_count = 20 * 60 / sampling_rate ## session length in minutes x 60s per minute / sampling rate
 ## Set relative path variable for circletrack behavior data
 path = pjoin(behavior_path, "data/**/**/**/circle_track.csv")
 ## Set str2match variable (regex for mouse name)
@@ -76,7 +78,6 @@ for file in file_list:
     mouseID.append(mouse)
 ## Combine file_list and mouseID
 combined_list = ctb.combine(file_list, mouseID)
-
 
 # %%
 for mouse in tqdm(mouse_list):
@@ -93,10 +94,14 @@ for mouse in tqdm(mouse_list):
             else:
                 next
         circle_track = ctb.crop_data(circle_track)
-        circle_track = ctb.normalize_timestamp(circle_track).reset_index(drop=True)
+        unix_start =  circle_track.loc[circle_track['event'] == 'START', 'timestamp'].values[0]
+        time_vector = np.arange(unix_start, (frame_count * sampling_rate + unix_start), sampling_rate)
         circle_track["frame"] = np.arange(len(circle_track))
-        data_out = circle_track[circle_track["event"] == "LOCATION"].copy()
-        events = circle_track[circle_track["event"] != "LOCATION"].copy()
+        data_out = circle_track[circle_track["event"] == "LOCATION"].copy().reset_index(drop=True)
+        arg_mins = [np.abs(data_out['timestamp'] - t).argmin() for t in time_vector] ## resample to sampling freq of time_vector
+        data_out = data_out.loc[arg_mins, :].reset_index(drop=True)
+        events = circle_track[circle_track["event"] != "LOCATION"].copy().reset_index(drop=True)
+        data_out['t'] = (pd.to_numeric(data_out['timestamp'] - unix_start))
         data_out[["x", "y", "a_pos"]] = (
             data_out["data"]
             .apply(
@@ -112,7 +117,7 @@ for mouse in tqdm(mouse_list):
         data_out["water"] = False
         for _, row in events.iterrows():
             ts = row["timestamp"]
-            idx = data_out.iloc[np.argmin(np.abs(data_out["timestamp"] - ts))].name
+            idx = np.argmin(np.abs(data_out["timestamp"] - ts))
             try:
                 port = int(row["data"][-1])
             except TypeError:
@@ -130,7 +135,7 @@ for mouse in tqdm(mouse_list):
         data_out[['reward_one', 'reward_two']] = int(rewards[0][-1]), int(rewards[1][-1])
         data_out = (
             data_out.drop(columns=["event", "data"])
-            .rename(columns={"timestamp": "t"})
+            .rename(columns={"timestamp": "unix"})
             .reset_index(drop=True)
         )
         data_out['probe'] = data_out['t'] < probe_end
