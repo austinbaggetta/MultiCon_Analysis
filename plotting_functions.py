@@ -96,8 +96,8 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', 
-                              marker_color = 'rgb(179,179,179)', plot_datapoints = True, plot_transitions=[5.5, 10.5, 15.5], **kwargs):
+def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', transition_color='darkgrey',
+                               marker_color = 'rgb(179,179,179)', plot_datapoints = True, plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -120,24 +120,44 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
     sem_data = data.groupby(groupby_var, as_index = False).sem()
     ## Create figure
     fig = custom_graph_template(**kwargs)
+    ## Colors for each group
+    if 'group' in groupby_var:
+        groups = np.unique(data['group'])
+        group_dict = {g:c for (g,c) in zip(groups, marker_color)}
+        
     if plot_datapoints:
         ## Plot individual subjects
         for subject in np.unique(data['mouse']):
-            data_sub = data.loc[data['mouse'] == subject]
+            data_sub = data.loc[data['mouse'] == subject].reset_index()
+            if 'group' in groupby_var:
+                subject_color = group_dict[data_sub.loc[0, 'group']]
+            else:
+                subject_color = marker_color
             fig.add_trace(go.Scatter(x = data_sub[x_var], y = data_sub[y_var],
                                     mode = 'markers', opacity = 0.5, 
-                                    marker = dict(color = marker_color, line = dict(width = 1)), name=subject))
-    ## Plot group average
-    fig.add_trace(go.Scatter(x = avg_data[x_var], y = avg_data[y_var],
-                             mode = 'lines+markers',
-                             error_y = dict(type = 'data', array = sem_data[y_var]),
-                             line = dict(color = avg_color)))
+                                    marker = dict(color = subject_color, line = dict(width = 1)), name=subject))
+    ## Plot group average or multiple group averages
+    if 'group' in groupby_var:
+        for group in np.unique(avg_data['group']):
+            avg_sub = avg_data.loc[avg_data['group'] == group]
+            sem_sub = sem_data.loc[sem_data['group'] == group]
+            fig.add_trace(go.Scatter(x = avg_sub[x_var], y = avg_sub[y_var],
+                                     mode = 'lines+markers',
+                                     error_y = dict(type = 'data', array = sem_sub[y_var]),
+                                     line = dict(color = group_dict[group]), name=group, showlegend=True))
+    else:
+        fig.add_trace(go.Scatter(x = avg_data[x_var], y = avg_data[y_var],
+                                mode = 'lines+markers',
+                                error_y = dict(type = 'data', array = sem_data[y_var]),
+                                line = dict(color = avg_color)))
+    ## Add dashed lines   
     if y_var == 'percent_correct':
-        fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=marker_color, opacity=1)
+        fig.add_hline(y=25, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
+        fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
     fig.update_layout(showlegend = False)
     if plot_transitions is not None:
         for value in plot_transitions:
-            fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=marker_color, opacity=1)
+            fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
     return fig
 
 
