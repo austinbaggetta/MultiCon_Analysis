@@ -304,6 +304,7 @@ def import_mouse_neural_data(path, mouse, key_file, session = '20min', neural_ty
     dpath = pjoin(path, 'Results/')
     dpath = pjoin(dpath, '{}/'.format(mouse))
     for date in os.listdir(dpath):
+        print(date)
         sessions[list(keys.keys())[list(keys.values()).index([date])]] = load_and_align_minian(path, mouse, date, session = session, neural_type = neural_type, plot_frame_usage = plot_frame_usage)
     return sessions
 

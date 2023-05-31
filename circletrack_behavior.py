@@ -961,6 +961,25 @@ def calculate_trial_times(aligned_behavior, forward_trials):
     return trial_length_dict
 
 
+def probe_lick_accuracy(df, port_one, port_two):
+    """
+    Used to calculate percent correct during the probe. Doesn't count only first licks, counts all licks.
+    Args:
+        df : pandas.DataFrame
+            preprocessed behavior output stored as feather file
+        port_one, port_two : str
+            name of rewarding ports
+    Returns:
+        percent_correct : float
+            lick accuracy for that session
+    """
+    licks = df[df['lick_port'] != -1].reset_index(drop=True)
+    count_licks = licks.groupby('lick_port', as_index=False).agg(licks=('lick_port', 'count'))
+    percent_correct = ((count_licks['licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
+                        count_licks['licks'].dropna().sum()) * 100
+    return percent_correct
+
+
 def lick_accuracy(df, port_one, port_two, by_trials=False):
     """
     Used to calculate the first lick percent correct.
@@ -1003,6 +1022,35 @@ def lick_accuracy(df, port_one, port_two, by_trials=False):
         percent_correct = ((count_licks['first_licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
                             count_licks['first_licks'].dropna().sum()) * 100
     return percent_correct
+
+
+def performance_drop(accuracy, day_list, replace=False):
+    """
+    Calculate the difference in lick accuracy between a given day and the day after it.
+    Args:
+        accuracy : pd.DataFrame
+            df with columns mouse, day, and percent_correct
+        day_list : list
+            list containing day(s) of interest, e.g. [5, 10, 15] will calculate the difference
+            between days 5-6, 10-11, and 15-16
+        replace : bool
+            replace any negative performance drop (mouse got better next session) with zero
+    Returns:
+        performance : pd.DataFrame
+            df with columns mouse, drop (difference), and day
+    """
+    performance = pd.DataFrame()
+    for day in day_list:
+        first_day = accuracy.loc[accuracy['day'] == day, 'percent_correct'].to_numpy()
+        second_day = accuracy.loc[accuracy['day'] == day + 1, 'percent_correct'].to_numpy()
+        drop = first_day - second_day
+        df = pd.DataFrame({'mouse': np.unique(accuracy['mouse']),
+                           'drop': drop,
+                           'day': day})
+        performance = pd.concat([performance, df])
+    if replace:
+        performance.loc[performance['drop'] < 0, 'drop'] = 0
+    return performance
 
 
 def get_forward_reverse_trials(aligned_behavior, positive_jump = 350, wiggle = 2):

@@ -26,19 +26,24 @@ def custom_graph_template(x_title, y_title, template = 'simple_white', height = 
     return fig
 
 
-def colors(group):
+def colors(experiment, group):
     """
     Used to define colors for specific groupings. Can easily change colors here and will propogate to graphs.
     Args:
+        experiment : str
+            one of ['mc_af']
         group : str
             one of ['pre', 'session', 'post']
     """
-    if group == 'pre':
-        return 'darkgrey'
-    elif group == 'session':
-        return 'rgb(118,78,159)'
-    elif group == 'post':
-        return 'turquoise'
+    if experiment == 'mc_af':
+        if group == 'pre':
+            return 'darkgrey'
+        elif group == 'session':
+            return 'rgb(118,78,159)'
+        elif group == 'post':
+            return 'turquoise'
+        else:
+            raise Exception('Incorrect group name! No color assigned.')
 
 
 def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
