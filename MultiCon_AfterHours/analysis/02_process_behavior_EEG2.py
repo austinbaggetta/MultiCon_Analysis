@@ -41,14 +41,18 @@ behavior_path = "../../../MultiCon_AfterHours/MultiCon_EEG2/circletrack_data"
 output_path = "../../../MultiCon_AfterHours/MultiCon_EEG2/output/behav"
 cohort_number = 'cohort1'
 mouse_list = ['mc_EEG2_02']
-sampling_rate = 1/30
-frame_count = 20 * 60 / sampling_rate
+downsample = False
+if downsample:
+    sampling_rate = 1/30 ## started keeping minian output at 1/30
+    frame_count = 20 * 60 / sampling_rate ## session length in minutes x 60s per minute / sampling rate
 ## Set relative path variable for circletrack behavior data
-path = pjoin(behavior_path, "data/**/**/**/circle_track.csv")
+csv_path = pjoin(behavior_path, "data/**/**/**/circle_track.csv")
+log_path = pjoin(behavior_path, "data/**/**/**/**.log")
 ## Set str2match variable (regex for mouse name)
 str2match = "(mc_EEG2_[0-9]+)"
 ## Create list of files
-file_list = ctb.get_file_list(path)
+file_list = ctb.get_file_list(csv_path)
+log_list = ctb.get_file_list(log_path)
 ## Loop through file_list to extract mouse name
 mouseID = []
 for file in file_list:
@@ -56,12 +60,15 @@ for file in file_list:
     mouseID.append(mouse)
 ## Combine file_list and mouseID
 combined_list = ctb.combine(file_list, mouseID)
+combined_log = ctb.combine(log_list, mouseID)
 
 # %%
-for mouse in tqdm(mouse_list):
+for mouse in mouse_list:
     natsort_key = natsort_keygen()
     subset = ctb.subset_combined(combined_list, mouse).reset_index(drop=True)
+    subset_log = ctb.subset_combined(combined_log, mouse).reset_index(drop=True)
     subset = sorted(subset, key=natsort_key)
+    subset_log = sorted(subset_log, key=natsort_key)
     for i, session in tqdm(enumerate(session_dict[mouse]), leave=False):
         print(session)
         circle_track = pd.read_csv(subset[i])
@@ -73,11 +80,12 @@ for mouse in tqdm(mouse_list):
                 next
         circle_track = ctb.crop_data(circle_track)
         unix_start =  circle_track.loc[circle_track['event'] == 'START', 'timestamp'].values[0]
-        time_vector = np.arange(unix_start, (frame_count * sampling_rate + unix_start), sampling_rate)
         circle_track["frame"] = np.arange(len(circle_track))
         data_out = circle_track[circle_track["event"] == "LOCATION"].copy().reset_index(drop=True)
-        arg_mins = [np.abs(data_out['timestamp'] - t).argmin() for t in time_vector] ## resample to sampling freq of time_vector
-        data_out = data_out.loc[arg_mins, :].reset_index(drop=True)
+        if downsample:
+            time_vector = np.arange(unix_start, (frame_count * sampling_rate + unix_start), sampling_rate)
+            arg_mins = [np.abs(data_out['timestamp'] - t).argmin() for t in time_vector] ## resample to sampling freq of time_vector
+            data_out = data_out.loc[arg_mins, :].reset_index(drop=True)
         events = circle_track[circle_track["event"] != "LOCATION"].copy().reset_index(drop=True)
         data_out['t'] = (pd.to_numeric(data_out['timestamp'] - unix_start))
         data_out[["x", "y", "a_pos"]] = (
@@ -117,6 +125,10 @@ for mouse in tqdm(mouse_list):
             .reset_index(drop=True)
         )
         data_out['probe'] = data_out['t'] < probe_end
+        if pd.isna(subset_log[i]):
+            data_out['maze'] = 'No behavior log'
+        else:
+            data_out['maze'] = subset_log[i][-9:-4]
         result_path = pjoin(output_path, mouse)
         data_out.to_feather(pjoin(result_path, "{}_{}.feat".format(mouse, session)))
 # %%
