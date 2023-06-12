@@ -441,3 +441,40 @@ def cell_quantiles(cell_array, quantile, test, quantile_lower=None):
     else:
         print('Must be greater_than, less_than, or within!')
     return output
+
+
+## Works on xarray.DataArray
+def align_start_end_times(act, behav):
+    """
+    Crops miniscope data to start and end when the behavior data starts and ends. For experiments without a ttl on circle track.
+    Args:
+        act : xarray.DataArray
+            calcium activity (C, S, S_binarized) with unix timestamps
+        behav : pandas.DataFrame
+            behavior data containing unix timestamps
+    Returns:
+        xarray.DataArray (S_shifted) where frame start and end is when behavior starts and ends
+    """
+    act_copy = act.copy()
+    start_idx = np.abs(behav.loc[0, 'unix'] - act_copy['unix'].values).argmin()
+    end_idx = np.abs(behav['unix'].tail(1).to_numpy() - ses_two['unix'].values).argmin()
+    return act_copy[:, start_idx:end_idx].rename('S_shifted')
+
+
+def align_calcium_behavior(act, behav):
+    """
+    Aligns calcium imaging data to behavior data for place cell analyses.
+    Args:
+        act : xarray.DataArray
+           calcium activity (C, S, S_binarized) with unix timestamps
+        behav : pandas.DataFrame
+             behavior data containing unix timestamps
+    Returns:
+        pandas.DataFrame with aligned indices and all columns
+    """
+    act_shifted = align_start_end_times(act, behav)
+    timestamps_calc = act_shifted['unix'].values
+    timestamps_calc = timestamps_calc.reshape(len(timestamps_calc), 1)
+    timestamps_behav = np.array(behav.loc[:, 'unix'])
+    aligned_indices = np.abs(timestamps_calc - timestamps_behav).argmin(axis=1)
+    return behav.loc[aligned_indices, :]
