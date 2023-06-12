@@ -478,3 +478,4 @@ def align_calcium_behavior(act, behav):
     timestamps_behav = np.array(behav.loc[:, 'unix'])
     aligned_indices = np.abs(timestamps_calc - timestamps_behav).argmin(axis=1)
     return behav.loc[aligned_indices, :]
+
