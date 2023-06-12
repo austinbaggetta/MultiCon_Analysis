@@ -43,7 +43,12 @@ def colors(experiment, group):
         elif group == 'post':
             return 'turquoise'
         else:
-            raise Exception('Incorrect group name! No color assigned.')
+            raise Exception('Incorrect group name! Must be one of [pre, session, post].')
+    elif experiment == 'mc_control':
+        if group == 'control':
+            return '#F58518'
+        else:
+            raise Exception('Incorrect group name! Must be one of [control]')
 
 
 def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
@@ -102,7 +107,8 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
 
 
 def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', transition_color='darkgrey',
-                               marker_color = 'rgb(179,179,179)', plot_datapoints = True, plot_transitions=[5.5, 10.5, 15.5], **kwargs):
+                               marker_color = 'rgb(179,179,179)', plot_datapoints = True, expert_line=True, chance=True,
+                               plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
     Includes individual subjects plotted over average.
@@ -156,10 +162,12 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
                                 error_y = dict(type = 'data', array = sem_data[y_var]),
                                 line = dict(color = avg_color)))
     ## Add dashed lines   
-    if y_var == 'percent_correct':
-        fig.add_hline(y=25, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
+    if expert_line:
         fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
+    if chance:
+        fig.add_hline(y=25, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
     fig.update_layout(showlegend = False)
+    ## Plot transitions
     if plot_transitions is not None:
         for value in plot_transitions:
             fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
