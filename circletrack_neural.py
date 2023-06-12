@@ -457,7 +457,7 @@ def align_start_end_times(act, behav):
     """
     act_copy = act.copy()
     start_idx = np.abs(behav.loc[0, 'unix'] - act_copy['unix'].values).argmin()
-    end_idx = np.abs(behav['unix'].tail(1).to_numpy() - ses_two['unix'].values).argmin()
+    end_idx = np.abs(behav['unix'].tail(1).to_numpy() - act_copy['unix'].values).argmin()
     return act_copy[:, start_idx:end_idx].rename('S_shifted')
 
 
