@@ -458,7 +458,7 @@ def align_start_end_times(act, behav):
     act_copy = act.copy()
     start_idx = np.abs(behav.loc[0, 'unix'] - act_copy['unix'].values).argmin()
     end_idx = np.abs(behav['unix'].tail(1).to_numpy() - act_copy['unix'].values).argmin()
-    return act_copy[:, start_idx:end_idx].rename('S_shifted')
+    return act_copy[:, start_idx:end_idx]
 
 
 def align_calcium_behavior(act, behav):
@@ -470,6 +470,7 @@ def align_calcium_behavior(act, behav):
         behav : pandas.DataFrame
              behavior data containing unix timestamps
     Returns:
+        act_shifted : xarray.DataArray cropped
         pandas.DataFrame with aligned indices and all columns
     """
     act_shifted = align_start_end_times(act, behav)
@@ -477,5 +478,5 @@ def align_calcium_behavior(act, behav):
     timestamps_calc = timestamps_calc.reshape(len(timestamps_calc), 1)
     timestamps_behav = np.array(behav.loc[:, 'unix'])
     aligned_indices = np.abs(timestamps_calc - timestamps_behav).argmin(axis=1)
-    return behav.loc[aligned_indices, :]
+    return act_shifted, behav.loc[aligned_indices, :].reset_index(drop=True)
 
