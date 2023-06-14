@@ -25,21 +25,22 @@ from tqdm import tqdm
 from scipy.signal import savgol_filter
 from sklearn.impute import SimpleImputer
 
-def define_running_epochs(aligned_behavior, velocity_thresh = 7):
+def define_running_epochs(x, y, t, velocity_thresh = 7):
     """
     Used to determine where a mouse is running above a given threshold.
     Args:
-        aligned_behavior : pandas.DataFrame
+        x, y, t : array
+            x and y position, time of each frame
         velocity_thresh : int
             any velocity value above this integer will be determined as running
     Returns:
         running : np.array
             array of boolean values where True means mouse is running during that frame
     """
-    delta = np.diff(np.asarray((aligned_behavior.x, aligned_behavior.y)).T, axis = 0)
+    delta = np.diff(np.asarray((x, y)).T, axis = 0)
     dists = np.hypot(delta[:, 0], delta[:, 1])
     dists = np.insert(dists, 0, 0)
-    velocity = dists / np.diff(aligned_behavior.t/1000, prepend = 0) ## in seconds
+    velocity = dists / np.diff(t, prepend = 0) ## in seconds
     running = velocity > velocity_thresh
     return running
 
