@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import pylab as pl
 import xarray as xr
@@ -45,43 +46,8 @@ def define_running_epochs(x, y, t, velocity_thresh = 7):
     return running
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-############ Modified from wmau PlaceFields.py code ############
 def spatial_bin(
-    x, y, bin_size_cm=20, show_plot=False, weights=None, ax=None, bins=None, one_dim=False, nbins=None,
+    x, y, bin_size_cm=20, show_plot=False, weights=None, bins=None, one_dim=False, nbins=None,
 ):
     """
     Spatially bins the position data.
@@ -120,9 +86,9 @@ def spatial_bin(
             )
         H, edges = np.histogram(x, bins, weights=weights)
         if show_plot:
-            if ax is None:
-                fig, ax = plt.subplots()
-            ax.plot(H)
+            fig = px.imshow(H, template='simple_white')
+            fig.update_layout(height=500, width=500)
+            fig.show()
         return H, edges, bins
     else:
         if bins is None:
@@ -137,10 +103,48 @@ def spatial_bin(
         # #Do the binning.
         H, xedges, yedges = np.histogram2d(y, x, bins, weights=weights)
         if show_plot:
-            if ax is None:
-                fig, ax = plt.subplots()
-            ax.imshow(H)
+            fig = px.imshow(H, template='simple_white')
+            fig.update_layout(height=500, width=500)
+            fig.show()
         return H, xedges, yedges, bins
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+############ Modified from wmau PlaceFields.py code ############
+
 
 
 def consecutive_dist(x, axis=0, zero_pad=False):
