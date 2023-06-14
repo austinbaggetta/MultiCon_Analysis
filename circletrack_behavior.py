@@ -1102,3 +1102,50 @@ def fix_lick_ports(behav, reward_one, reward_two):
             elif (behav.loc[idx, 'lin_position'] >= r2_min) | (behav.loc[idx, 'lin_position'] <= r2_max):
                 behav.loc[idx] = behav.loc[idx].replace(to_replace={-1: reward_two})
     return behav
+
+
+def normalized_probe_metric(lick_array, reward_one, reward_two):
+    """
+    Calculate the average lick accuracy metric between -1 and 1. Ports next to a rewarded port are
+    given a value of 0, whereas ports two spaces away are given a value of -1.
+    
+    ** This assumes that ports are orthogonal to each other, doesn't work otherwise. **
+
+    Args:
+        lick_data : np.array
+            array of lick port values where a mouse licked during the probe
+        reward_one, reward_two : int
+            port id of rewarded ports 
+    Returns:
+        mean value between -1 and 1
+    """
+    if (type(reward_one)) and (type(reward_two)) == str:
+        reward_one = int(reward_one[-1])
+        reward_two = int(reward_two[-1])
+    
+    port_dict = {port: np.nan for port in np.arange(1, 9)}
+    port_dict[reward_one], port_dict[reward_two] = [1, 1]
+
+    if (reward_one == 3) and (reward_two == 7):
+        port_dict[(reward_one + 1)], port_dict[(reward_one - 1)] = [0, 0]
+        port_dict[(reward_one + 2)], port_dict[(reward_one - 2)] = [-1, -1]
+        port_dict[(reward_two + 1)], port_dict[(reward_two - 1)] = [0, 0]
+    elif (reward_one == 4) and (reward_two == 8):
+        port_dict[(reward_one + 1)], port_dict[(reward_one - 1)] = [0, 0]
+        port_dict[(reward_one + 2)], port_dict[(reward_one - 2)] = [-1, -1]
+        port_dict[(reward_one - 3)], port_dict[(reward_two - 1)] = [0, 0]
+    elif (reward_one == 2) and (reward_two == 6):
+        port_dict[(reward_one + 1)], port_dict[(reward_one - 1)] = [0, 0]
+        port_dict[(reward_two + 1)], port_dict[(reward_two - 1)] = [0, 0]
+        port_dict[(reward_two + 2)], port_dict[(reward_two - 2)] = [-1, -1]
+    elif (reward_one == 1) and (reward_two == 5):
+        port_dict[(reward_two + 1)], port_dict[(reward_two -1)] = [0, 0]
+        port_dict[(reward_two + 2)], port_dict[(reward_two - 2)] = [-1, -1]
+        port_dict[(reward_two + 3)], port_dict[(reward_one + 1)] = [0, 0]
+    else:
+        raise Exception('Incorrect port values assigned!')
+    
+    value_list = []
+    for value in lick_array:
+        value_list.append(port_dict[value])
+    return np.mean(value_list)
