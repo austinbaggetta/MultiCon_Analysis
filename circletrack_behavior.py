@@ -119,8 +119,15 @@ def get_rewarding_ports(data, processed=False):
         else:
             all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop = True)
             reward_ports = pd.DataFrame(all_rewards.unique(), columns = ['data'])
-            reward_first = reward_ports.iloc[0, 0]
-            reward_second = reward_ports.iloc[1, 0]
+            if reward_ports.empty:
+                reward_first = None
+                reward_second = None
+            elif len(reward_ports) == 1:
+                reward_first = reward_ports.iloc[0, 0]
+                reward_second = None
+            else:
+                reward_first = reward_ports.iloc[0, 0]
+                reward_second = reward_ports.iloc[1, 0]
             return reward_first, reward_second
 
 
@@ -1166,3 +1173,35 @@ def days_to_criteria(lick_df, mouse, criteria_val):
     """
     sub_df = lick_df[(lick_df['mouse'] == mouse) & (lick_df['percent_correct'] >= criteria_val)].reset_index(drop=True)
     return np.concatenate((np.asarray([sub_df['day'][0]]), np.diff(sub_df['day'])))
+
+
+def find_center(x, y):
+    """
+    Find center of circle.
+    Args:
+        x, y : float
+    """
+    x_extrema = [min(x), max(x)]
+    y_extrema = [min(y), max(y)]
+    return (np.mean(x_extrema), np.mean(y_extrema))
+
+
+def rotate(p, origin=(0, 0), degrees=0):
+    """
+    Rotates a point about a given origin.
+    Args:
+        p : tuple
+            x, y position of your point. Can also give multiple points in the case of a polygon.
+        origin : tuple
+            x, y position of point you want to rotate about
+        degrees : float
+            amount of degrees you want to rotate point
+    Returns:
+        rotated tuple
+    """
+    angle = np.deg2rad(degrees)
+    R = np.array([[np.cos(angle), -np.sin(angle)],
+                  [np.sin(angle),  np.cos(angle)]])
+    o = np.atleast_2d(origin)
+    p = np.atleast_2d(p)
+    return np.squeeze((R @ (p.T-o.T) + o.T).T)
