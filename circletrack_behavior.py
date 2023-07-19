@@ -1,10 +1,10 @@
 import pandas as pd
 import numpy as np
+import xarray as xr
 import yaml
 import os
 import re
 import glob
-import plotly.express as px
 import plotly.graph_objects as go
 from os.path import join as pjoin
 from scipy.stats import norm
@@ -718,7 +718,7 @@ def get_trials(df, shift_factor, angle_type = 'radians', counterclockwise = True
             break
         ## The start of the next trial is the end of the last.
         trial_start = trial_end
-    return trials.astype(int)
+    return trials
 
 
 def forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2):
@@ -745,7 +745,10 @@ def forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle
     backward_trials = []
     for trial in np.unique(trials):
         ## Take the difference between each angular position within a given trial to determine direction
-        diff = aligned_behavior.a_pos[trials == trial].diff()
+        if type(aligned_behavior) == xr.core.dataarray.DataArray:
+            diff = aligned_behavior.a_pos[trials == trial].diff(dim='frame')
+        else:
+            diff = aligned_behavior.a_pos[trials == trial].diff()
         ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
         if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
             forward_trials.append(trial)
@@ -1186,7 +1189,7 @@ def find_center(x, y):
     return (np.mean(x_extrema), np.mean(y_extrema))
 
 
-def rotate(p, origin=(0, 0), degrees=0):
+def rotate(p, origin, degrees=0):
     """
     Rotates a point about a given origin.
     Args:
@@ -1205,3 +1208,41 @@ def rotate(p, origin=(0, 0), degrees=0):
     o = np.atleast_2d(origin)
     p = np.atleast_2d(p)
     return np.squeeze((R @ (p.T-o.T) + o.T).T)
+
+
+def rotate_ports(input_maze, output_maze, reward_one, reward_two):
+    """
+    Used to rotate port identies to check for licking preference based on external cue.
+    Args:
+        input_maze : str
+            which maze the mouse is coming from
+        output_maze : str
+            which maze the mouse went to
+        reward_one, reward_two : int
+            interger values for input_mazes' reward ports
+    Returns:
+        the equivalent ports of reward_one, reward_two in the output_maze based on cue rotation but sorted
+    """
+    ports = []
+    if input_maze == 'maze1':
+        mazes = {'maze2': {1: 7, 2: 8, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6},
+                 'maze3': {1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 8, 7: 1, 8: 2},
+                 'maze4': {1: 5, 2: 6, 3: 7, 4: 8, 5: 1, 6: 2, 7: 3, 8: 4}}
+    elif input_maze == 'maze2':
+        mazes = {'maze1': {1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 8, 7: 1, 8: 2},
+                 'maze3': {1: 5, 2: 6, 3: 7, 4: 8, 5: 1, 6: 2, 7: 3, 8: 4},
+                 'maze4': {1: 7, 2: 8, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6}}
+    elif input_maze == 'maze3':
+        mazes = {'maze1': {1: 7, 2: 8, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6},
+                 'maze2': {1: 5, 2: 6, 3: 7, 4: 8, 5: 1, 6: 2, 7: 3, 8: 4},
+                 'maze4': {1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 8, 7: 1, 8: 2}}
+    elif input_maze == 'maze4':
+        mazes = {'maze1': {1: 5, 2: 6, 3: 7, 4: 8, 5: 1, 6: 2, 7: 3, 8: 4},
+                 'maze2': {1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 8, 7: 1, 8: 2},
+                 'maze3': {1: 7, 2: 8, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6}}
+    else:
+        raise Exception('Incorrect input maze!')
+    ports.append(mazes[output_maze][reward_one])
+    ports.append(mazes[output_maze][reward_two])
+    ports = sorted(ports)
+    return ports
