@@ -10,12 +10,11 @@ import circletrack_behavior as ctb
 
 
 def custom_graph_template(x_title, y_title, template = 'simple_white', height = 500, width = 500,
-                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False):
+                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=12, **kwargs):
     """
     Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
     """
-    fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, shared_xaxes=shared_x)
-    fig.update_layout(template = template, height = height, width = width)
+    fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, shared_xaxes=shared_x, **kwargs)
     fig.update_yaxes(title = y_title)
     fig.update_xaxes(title = x_title)
     fig.update_layout(title={
@@ -23,6 +22,7 @@ def custom_graph_template(x_title, y_title, template = 'simple_white', height = 
         'x':0.5,
         'xanchor': 'center',
         'yanchor': 'top'})
+    fig.update_layout(template = template, height = height, width = width, font=dict(size=font_size))
     return fig
 
 
@@ -145,8 +145,8 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
             else:
                 subject_color = marker_color
             fig.add_trace(go.Scatter(x = data_sub[x_var], y = data_sub[y_var],
-                                    mode = 'markers', opacity = 0.5, 
-                                    marker = dict(color = subject_color, line = dict(width = 1)), name=subject))
+                                    mode = 'lines', opacity = 0.5, name=subject, line_color=subject_color))
+                                    #marker = dict(color = subject_color, line = dict(width = 1))))
     ## Plot group average or multiple group averages
     if 'group' in groupby_var:
         for group in np.unique(avg_data['group']):

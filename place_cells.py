@@ -26,7 +26,7 @@ from tqdm import tqdm
 from scipy.signal import savgol_filter
 from sklearn.impute import SimpleImputer
 
-def define_running_epochs(x, y, t, velocity_thresh = 7):
+def define_running_epochs(x, y, t, velocity_thresh=7):
     """
     Used to determine where a mouse is running above a given threshold.
     Args:
@@ -43,12 +43,10 @@ def define_running_epochs(x, y, t, velocity_thresh = 7):
     dists = np.insert(dists, 0, 0)
     velocity = dists / np.diff(t, prepend = 0) ## in seconds
     running = velocity > velocity_thresh
-    return running
+    return velocity, running
 
 
-def spatial_bin(
-    x, y, bin_size_cm=20, show_plot=False, weights=None, bins=None, one_dim=False, nbins=None,
-):
+def spatial_bin(x, y, bin_size_cm=20, show_plot=False, weights=None, bins=None, one_dim=False, nbins=None):
     """
     Spatially bins the position data.
     Args:
@@ -107,40 +105,6 @@ def spatial_bin(
             fig.update_layout(height=500, width=500)
             fig.show()
         return H, xedges, yedges, bins
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ############ Modified from wmau PlaceFields.py code ############
@@ -222,7 +186,6 @@ def spatial_information(tuning_curve, occupancy):
     bits_per_spk = sum(
         prob[index] * (rate[index] / mrate) * np.log2(rate[index] / mrate)
     )
-
     return bits_per_spk
 
 
@@ -233,13 +196,13 @@ class PlaceFields:
         x,
         y,
         neural_data,
-        bin_size=20,
+        bin_size=None,
         circular=False,
         linearized=False,
         shuffle_test=True,
         fps=None,
-        velocity_threshold=10,
-        nbins=None,
+        velocity_threshold=7,
+        nbins=20,
     ):
         """
         Place field object.
@@ -300,11 +263,15 @@ class PlaceFields:
             self.meta["fps"] = int(fps)
 
         ## Compute distance and velocity. Smooth the velocity.
+        velocity, running = define_running_epochs(self.data['x'], 
+                                                  self.data['y'], 
+                                                  self.data['t'],
+                                                  self.meta['velocity_threshold'])
         d = consecutive_dist(
             np.asarray((self.data["x"], self.data["y"])).T, zero_pad=True
         )
-        self.data["velocity"] = d / np.diff(t/1000, prepend=0)
-        self.data["running"] = self.data["velocity"] > self.meta["velocity_threshold"]
+        self.data["velocity"] = velocity
+        self.data["running"] = running
 
         ## If we're using circular position, convert data to radians.
         if self.meta["circular"]:
@@ -334,7 +301,7 @@ class PlaceFields:
         self.data['placefields'] = self.make_all_place_fields()
 
         ## Calculate normalized by occupancy place fields
-        self.data['normalized_placefields'] = self.make_all_place_fields(normalize = True)
+        self.data['normalized_placefields'] = self.make_all_place_fields(normalize=True)
 
         ## Calculate spatial information
         self.data['spatial_information'] = []
@@ -385,13 +352,6 @@ class PlaceFields:
             nbins=self.meta["nbins"]
         )
         occupancy_map, occupancy_bins = temp[0], temp[-1]
-
-        if show_plot:
-            if ax is None:
-                fig, ax = plt.subplots()
-
-            ax.imshow(occupancy_map, origin="lower")
-
         return occupancy_map, occupancy_bins
     
 
@@ -504,7 +464,7 @@ class PlaceFields:
 
     def assess_spatial_sig_parallel(self):
         print("Doing shuffle tests. This may take a while.")
-        neurons = tqdm([n for n in range(self.data["n_neurons"])])
+        neurons = [n for n in range(self.data["n_neurons"])]
         n_cores = mp.cpu_count()
         # with futures.ProcessPoolExecutor() as pool:
         #     results = pool.map(self.assess_spatial_sig, neurons)
@@ -550,4 +510,3 @@ class PlaceFields:
     #         c=transient_color,
     #     )
 
-    
