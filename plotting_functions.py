@@ -106,7 +106,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', transition_color='darkgrey',
+def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', chance_color='darkgrey', transition_color=['darkgrey'],
                                marker_color = 'rgb(179,179,179)', plot_datapoints = True, expert_line=True, chance=True,
                                plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
@@ -163,14 +163,14 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
                                 line = dict(color = avg_color)))
     ## Add dashed lines   
     if expert_line:
-        fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
+        fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)
     if chance:
-        fig.add_hline(y=25, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
+        fig.add_hline(y=25, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)
     fig.update_layout(showlegend = False)
     ## Plot transitions
     if plot_transitions is not None:
-        for value in plot_transitions:
-            fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=transition_color, opacity=1)
+        for idx, value in enumerate(plot_transitions):
+            fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=transition_color[idx], opacity=1)
     return fig
 
 
