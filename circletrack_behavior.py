@@ -757,7 +757,7 @@ def forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle
     return forward_trials, backward_trials
 
 
-def calculate_trial_length(aligned_behavior, angle_type = 'radians', shift_factor = 0, forward_reverse = False):
+def calculate_trial_length(aligned_behavior, angle_type='radians', shift_factor=0, forward_reverse=False, recalc_trials=False):
     """
     Calculate the number of seconds that occurs in each trial.
     Args:
@@ -769,6 +769,8 @@ def calculate_trial_length(aligned_behavior, angle_type = 'radians', shift_facto
             how to shift the zero position
         forward_reverse : boolean
             will separate trials into forward and reverse trials
+        recalc_trials : boolean
+            will use function get_trials to determine trial structure - not needed if trials already exist from preprocessing
     Returns:
         time_diff : list
             list of times corresponding to the time difference between the beginning and end of the trial
@@ -776,7 +778,10 @@ def calculate_trial_length(aligned_behavior, angle_type = 'radians', shift_facto
             list of times corresponding to the time difference between the beginning and end of the trial separated by forward and reverse trials
     """
     ## Calculate trials, label each frame as a specific trial
-    trials = get_trials(aligned_behavior, shift_factor = shift_factor, angle_type = angle_type, counterclockwise = True)
+    if recalc_trials:
+        trials = get_trials(aligned_behavior, shift_factor = shift_factor, angle_type = angle_type, counterclockwise = True)
+    else:
+        trials = aligned_behavior['trials']
     if forward_reverse:
         ## Calculate forward and reverse trials
         forward_trials, reverse_trials = forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2)
@@ -786,13 +791,13 @@ def calculate_trial_length(aligned_behavior, angle_type = 'radians', shift_facto
         for f_trial in forward_trials:
             behavior = aligned_behavior.loc[trials == f_trial]
             ## Get the first and last timestamp to determine the window
-            first_timestamp, last_timestamp = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
+            first_timestamp, last_timestamp = behavior['t'].to_numpy()[0], behavior['t'].to_numpy()[-1]
             time_diff_forward.append(last_timestamp - first_timestamp)
         ## Loop through reverse trials
         for r_trial in reverse_trials:
             behavior = aligned_behavior.loc[trials == r_trial]
             ## Get the first and last timestamp to determine the window
-            first_timestamp, last_timestamp = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
+            first_timestamp, last_timestamp = behavior['t'].to_numpy()[0], behavior['t'].to_numpy()[-1]
             time_diff_reverse.append(last_timestamp - first_timestamp)
         ## Comebine for both to do histogram plotting
         time_diff = time_diff_forward + time_diff_reverse
@@ -803,7 +808,7 @@ def calculate_trial_length(aligned_behavior, angle_type = 'radians', shift_facto
             ## Subset aligned_behavior by a given trial
             behavior = aligned_behavior.loc[trials == trial]
             ## Get the first and last timestamp to determine the window
-            first_timestamp, last_timestamp = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
+            first_timestamp, last_timestamp = behavior['t'].to_numpy()[0], behavior['t'].to_numpy()[-1]
             time_diff.append(last_timestamp - first_timestamp)
         return time_diff
 
@@ -1246,3 +1251,47 @@ def rotate_ports(input_maze, output_maze, reward_one, reward_two):
     ports.append(mazes[output_maze][reward_two])
     ports = sorted(ports)
     return ports
+
+
+def first_last_day_context(df, contexts=['A', 'B', 'C', 'D', 'A2']):
+    """
+    Gets the index of the first and last day in a context.
+    Args:
+        df : pandas.DataFrame
+            Dataframe with a session column
+        contexts : list
+            List of session names as strings (e.g. 'A', 'B')
+    Returns:
+        index_list : list
+            list of indices which code for first and last day in each context given in contexts argument
+    """
+    index_list = []
+    ## First and last day first context
+    index_list.append(df['session'].ne(contexts[0]).idxmin())
+    index_list.append(df['session'].ne(contexts[0]).idxmax()-1)
+    ## First and last day second context
+    index_list.append(df['session'][df['session'] != contexts[0]].ne(contexts[1]).idxmin())
+    index_list.append(df['session'][df['session'] != contexts[0]].ne(contexts[1]).idxmax()-1)
+    ## First and last day third context
+    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1])].ne(contexts[2]).idxmin())
+    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1])].ne(contexts[2]).idxmax()-1)
+    ## First and last day fourth context
+    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2])].ne(contexts[3]).idxmin())
+    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2])].ne(contexts[3]).idxmax()-1)
+
+    if len(contexts) > 4:
+        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).idxmin())
+        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).index[-1])
+    return index_list
+
+def last_day_context(df, contexts=['A', 'B', 'C', 'D', 'A2']):
+    index_list = []
+    index_list.append(df['session'].ne(contexts[0]).idxmax()-1)
+    index_list.append(df['session'][df['session'] != contexts[0]].ne(contexts[1]).idxmax()-1)
+    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1])].ne(contexts[2]).idxmax()-1)
+    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2])].ne(contexts[3]).idxmax()-1)
+    if 'A2' in contexts:
+        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).index[-1])
+    elif 'AP' in contexts:
+        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).index[-1])
+    return index_list
