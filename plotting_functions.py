@@ -10,11 +10,11 @@ import circletrack_behavior as ctb
 
 
 def custom_graph_template(x_title, y_title, template = 'simple_white', height = 500, width = 500,
-                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=12, **kwargs):
+                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=18, **kwargs):
     """
     Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
     """
-    fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, shared_xaxes=shared_x, **kwargs)
+    fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, **kwargs)
     fig.update_yaxes(title = y_title)
     fig.update_xaxes(title = x_title)
     fig.update_layout(title={
@@ -22,7 +22,10 @@ def custom_graph_template(x_title, y_title, template = 'simple_white', height = 
         'x':0.5,
         'xanchor': 'center',
         'yanchor': 'top'})
+    fig.update_annotations(font_size=font_size)
     fig.update_layout(template = template, height = height, width = width, font=dict(size=font_size))
+    if shared_x:
+        fig.update_xaxes(matches='x')
     return fig
 
 
@@ -329,10 +332,10 @@ def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue',
     for neuron in np.arange(0, n_neurons):
         if df.participants[neuron] == True:
             fig.add_trace(go.Scatter(x = [df['location'][neuron], df['location'][neuron]], y = [0, df['head'][neuron]], mode = 'lines+markers', 
-                          line=dict(width=1, color=member_color), marker=dict(color=member_color), opacity = opacity))
+                          line=dict(width=1, color=member_color), marker=dict(color=member_color), opacity = opacity, showlegend=False))
         else:
             fig.add_trace(go.Scatter(x = [df['location'][neuron], df['location'][neuron]], y = [0, df['head'][neuron]], mode = 'lines+markers', 
-                          line=dict(width=1, color=nonmem_color), marker=dict(color=nonmem_color), opacity = opacity))
+                          line=dict(width=1, color=nonmem_color), marker=dict(color=nonmem_color), opacity = opacity, showlegend=False))
     ## Change marker size, change template, add x/y titles, title, and horizontal line at zero
     fig.update_traces(marker=dict(size = size))
     fig.add_hline(y = baseline, line_dash = 'solid', opacity = 1, line_width = 1, line_color = hline_color)
