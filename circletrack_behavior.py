@@ -1252,53 +1252,6 @@ def rotate_ports(input_maze, output_maze, reward_one, reward_two):
     ports = sorted(ports)
     return ports
 
-def last_day_context(df, contexts=['A', 'B', 'C', 'D', 'A2']):
-    """
-    Gets the index of the last day in a context.
-    Args:
-        df : pandas.DataFrame
-            Dataframe with a session column
-        contexts : list
-            List of session names as strings (e.g. 'A', 'B')
-    Returns:
-        index_list : list
-            list of indices which code for first and last day in each context given in contexts argument
-    """
-    index_list = []
-    index_list.append(df['session'].ne(contexts[0]).idxmax()-1)
-    index_list.append(df['session'][df['session'] != contexts[0]].ne(contexts[1]).idxmax()-1)
-    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1])].ne(contexts[2]).idxmax()-1)
-    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2])].ne(contexts[3]).idxmax()-1)
-    if 'A2' in contexts:
-        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).index[-1])
-    elif 'AP' in contexts:
-        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).index[-1])
-    return index_list
-
-
-def first_day_context(df, contexts=['A', 'B', 'C', 'D', 'A2']):
-    """
-    Gets the index of the first day in a context.
-    Args:
-        df : pandas.DataFrame
-            Dataframe with a session column
-        contexts : list
-            List of session names as strings (e.g. 'A', 'B')
-    Returns:
-        index_list : list
-            list of indices which code for first and last day in each context given in contexts argument
-    """
-    index_list = []
-    index_list.append(df['session'].ne(contexts[0]).idxmin())
-    index_list.append(df['session'][df['session'] != contexts[0]].ne(contexts[1]).idxmin())
-    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1])].ne(contexts[2]).idxmin())
-    index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2])].ne(contexts[3]).idxmin())
-    if 'A2' in contexts:
-        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).idxmin())
-    elif 'AP' in contexts:
-        index_list.append(df['session'][(df['session'] != contexts[0]) & (df['session'] != contexts[1]) & (df['session'] != contexts[2]) & (df['session'] != contexts[3])].ne(contexts[4]).idxmin())
-    return index_list 
-
 
 def pick_context_day(df, col_name='session', day_index=-1, contexts=['A', 'B', 'C', 'D', 'A2']):
     """
