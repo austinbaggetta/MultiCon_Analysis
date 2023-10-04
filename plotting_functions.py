@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 from plotly.subplots import make_subplots
 from os.path import join as pjoin
 import os
@@ -428,6 +429,9 @@ def plot_lick_raster(behav, symbol='square', plot_reward=True, lick_color='grey'
 
 
 def plot_circle_position(behav, position_color='grey', position_size=4, lick_color='turquoise', lick_size=4, downsample_factor=15, plot_licks=True, **kwargs):
+    """
+    Plot the position of the mouse as x,y coordinates with the x,y coordinate of licks as a separate color.
+    """
     try:
         behav.insert(0, 'lick_bool', behav['lick_port'] != -1)
     except:
@@ -439,4 +443,42 @@ def plot_circle_position(behav, position_color='grey', position_size=4, lick_col
         lick_x = behav['x'][behav['lick_bool']]
         lick_y = behav['y'][behav['lick_bool']]
         fig.add_trace(go.Scatter(x=lick_x, y=lick_y, mode='markers', marker=dict(color = lick_color, size = lick_size), name='Lick'))
+    return fig
+
+
+def plot_group_averages(df, y_col_name, x_col_name, group_color_dict, mouse_grouping_variables=['mouse', 'session', 'group'], 
+                        avg_grouping_variables=['group', 'session'], x_axis_order=None, **kwargs):
+    """ 
+    Plot averages for different groups of mice.
+    Args:
+        df : pandas.DataFrame
+            dataframe of results
+        y_col_name, x_col_name : str
+            string of columns of interest
+        mouse_grouping_variables, avg_grouping_variables : list
+            list of column names to be grouped
+        group_color_dict : dict
+            dictionary of colors as {group: color} in alphabetical order
+        x_axis_order : list
+            specify the order of the x_axis
+        kwargs are additional arguments for fig.update_layout()
+    Returns:
+        fig : plotly.graph_object
+    """
+    mouse_grouped_data = df.groupby(mouse_grouping_variables, as_index=False).agg({y_col_name: 'mean'})
+    avg_df = df.groupby(avg_grouping_variables, as_index=False).agg({y_col_name: ['mean', 'sem']})
+
+    fig = px.strip(mouse_grouped_data, x=x_col_name, y=y_col_name, color='group', hover_name='mouse',
+                   color_discrete_sequence=list(group_color_dict.values())).update_traces(showlegend=False, opacity=0.8, marker_line_width=1)
+    
+    for group in np.unique(df['group']):
+        group_df = avg_df[avg_df['group'] == group]
+        fig.add_trace(go.Bar(x=group_df[x_col_name], y=group_df[y_col_name]['mean'],
+                             error_y=dict(type='data', array=group_df[y_col_name]['sem'], thickness=2.5, width=10),
+                             marker_color=group_color_dict[group], marker_line_color='black', 
+                             marker_line_width=2, name=group, opacity=0.8))
+    
+    fig.update_layout(**kwargs)
+    if x_axis_order is not None:
+        fig.update_xaxes(categoryorder='array', categoryarray=x_axis_order)
     return fig
