@@ -5,6 +5,7 @@ import yaml
 import os
 import re
 import glob
+import pinguoin as pg
 import plotly.graph_objects as go
 from os.path import join as pjoin
 from scipy.stats import norm
@@ -1273,6 +1274,66 @@ def pick_context_day(df, col_name='session', day_index=-1, contexts=['A', 'B', '
         c_data = df[df[col_name] == context].reset_index()
         index_list.append(c_data.loc[c_data.index[day_index], 'index'])
     return index_list
+
+
+def relative_port_distance(reward_one, reward_two, maze):
+    """
+    Determine minimum port angle distance from wall cue.
+    Args:
+        reward_one, reward_two : int
+            reward port values
+        maze : str
+            maze string
+    Returns:
+
+    """
+    port_angles = [0, 45, 90, 135, 180, 135, 90, 45] ## reference maze is maze4
+    if maze == 'maze1':
+        shifted_angles = np.roll(port_angles, shift=4)
+    elif maze == 'maze2':
+        shifted_angles = np.roll(port_angles, shift=2)
+    elif maze == 'maze3':
+        shifted_angles = np.roll(port_angles, shift=-2)
+    elif maze == 'maze4':
+        shifted_angles = port_angles
+    else:
+        raise Exception('Incorrect maze value!')
+
+    ## Get minimum angle value, -1 for index because reward ports are labeled 1-8
+    return np.min([shifted_angles[reward_one-1], shifted_angles[reward_two-1]])
+
+
+def port_lick_chisquared(behav, num_ports=8, probe=True):
+    """
+    Determine if observed licking at ports is significantly different than expected by chance.
+    Args:
+        behav : pandas.DataFrame
+            behavior dataframe with probe and lick_port info
+        num_ports : int
+            number of ports in circle track; by default 8
+        probe : bool
+            Whether to look at licking only during probe or outside of probe; by default True
+    Returns:
+        expected, observed, stats : pandas.DataFrame
+            read pinguoin documentation on pg.chi2_independence
+    """
+    if probe:
+        data = behav[behav['probe']]
+    else:
+        data = behav[~behav['probe']]
+
+    ## Calculate expected value at a port E(P) = 1/n_p x total_licks
+    total_licks = data[data['lick_port'] != -1].shape[0]
+    expected_value = (1/num_ports) * total_licks ## 8 water ports by default
+    
+    actual_licks, expected_licks = pd.DataFrame(), pd.DataFrame()
+    actual_licks['lick_port'] = data['lick_port'][data['lick_port'] != -1].reset_index(drop=True)
+    expected_licks['lick_port'] = np.repeat(np.arange(1, num_ports+1), repeats=round(expected_value))
+    actual_licks['type'] = 'actual'
+    expected_licks['type'] = 'expected'
+    lick_df = pd.concat([expected_licks, actual_licks])
+    expected, observed, stats = pg.chi2_independence(lick_df, x='lick_port', y='type')
+    return expected, observed, stats
 
 
 
