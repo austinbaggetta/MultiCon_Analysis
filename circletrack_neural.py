@@ -444,7 +444,7 @@ def cell_quantiles(cell_array, quantile, test, quantile_lower=None):
 
 
 ## Works on xarray.DataArray
-def align_start_end_times(act, behav):
+def align_start_end_times(act, behav, col_name='unix'):
     """
     Crops miniscope data to start and end when the behavior data starts and ends. For experiments without a ttl on circle track.
     Args:
@@ -456,12 +456,12 @@ def align_start_end_times(act, behav):
         xarray.DataArray (S_shifted) where frame start and end is when behavior starts and ends
     """
     act_copy = act.copy()
-    start_idx = np.abs(behav.loc[0, 'unix'] - act_copy['unix'].values).argmin()
-    end_idx = np.abs(behav['unix'].tail(1).to_numpy() - act_copy['unix'].values).argmin()
+    start_idx = np.abs(behav.loc[0, col_name] - act_copy[col_name].values).argmin()
+    end_idx = np.abs(behav[col_name].tail(1).to_numpy() - act_copy[col_name].values).argmin()
     return act_copy[:, start_idx:end_idx]
 
 
-def align_calcium_behavior(act, behav):
+def align_calcium_behavior(act, behav, col_name='unix'):
     """
     Aligns calcium imaging data to behavior data for place cell analyses.
     Args:
@@ -469,14 +469,18 @@ def align_calcium_behavior(act, behav):
            calcium activity (C, S, S_binarized) with unix timestamps
         behav : pandas.DataFrame
              behavior data containing unix timestamps
+        col_name : str
+            one of ['unix', 'timestamps'], depending on whether you are using unix timestamps or millisecond timestamps
     Returns:
         act_shifted : xarray.DataArray cropped
         pandas.DataFrame with aligned indices and all columns
     """
-    act_shifted = align_start_end_times(act, behav)
-    timestamps_calc = act_shifted['unix'].values
+    act_shifted = align_start_end_times(act, behav, col_name=col_name)
+    timestamps_calc = act_shifted[col_name].values
     timestamps_calc = timestamps_calc.reshape(len(timestamps_calc), 1)
-    timestamps_behav = np.array(behav.loc[:, 'unix'])
+    timestamps_behav = np.array(behav.loc[:, col_name])
+    if col_name == 'timestamps':
+        timestamps_behav = np.array(behav.loc[:, col_name]) / 1000 ## convert to seconds
     aligned_indices = np.abs(timestamps_calc - timestamps_behav).argmin(axis=1)
     return act_shifted, behav.loc[aligned_indices, :].reset_index(drop=True)
 
