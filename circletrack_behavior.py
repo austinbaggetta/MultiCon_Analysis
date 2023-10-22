@@ -5,7 +5,7 @@ import yaml
 import os
 import re
 import glob
-import pinguoin as pg
+import pingouin as pg
 import plotly.graph_objects as go
 from os.path import join as pjoin
 from scipy.stats import norm
@@ -1334,11 +1334,6 @@ def port_lick_chisquared(behav, num_ports=8, probe=True):
     lick_df = pd.concat([expected_licks, actual_licks])
     expected, observed, stats = pg.chi2_independence(lick_df, x='lick_port', y='type')
     return expected, observed, stats
-
-
-
-
-
 
 
 
