@@ -110,7 +110,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
     return fig
 
 
-def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color = 'turquoise', chance_color='darkgrey', transition_color=['darkgrey'],
+def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color='turquoise', chance_color='darkgrey', transition_color=['darkgrey'],
                                marker_color = 'rgb(179,179,179)', plot_datapoints = True, expert_line=True, chance=True,
                                plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
@@ -130,9 +130,9 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
             figure     
     """
     ## Calculate mean for each day
-    avg_data = data.groupby(groupby_var, as_index = False).mean(numeric_only = True)
+    avg_data = data.groupby(groupby_var, as_index=False).mean(numeric_only=True)
     ## Calculate SEM for each day
-    sem_data = data.groupby(groupby_var, as_index = False).sem()
+    sem_data = data.groupby(groupby_var, as_index=False).sem()
     ## Create figure
     fig = custom_graph_template(**kwargs)
     ## Colors for each group
@@ -148,23 +148,23 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
                 subject_color = group_dict[data_sub.loc[0, 'group']]
             else:
                 subject_color = marker_color
-            fig.add_trace(go.Scatter(x = data_sub[x_var], y = data_sub[y_var],
-                                    mode = 'lines', opacity = 0.5, name=subject, line_color=subject_color))
-                                    #marker = dict(color = subject_color, line = dict(width = 1))))
+            fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var],
+                                    mode='lines', opacity=0.5, name=subject, line_color=subject_color, line_width=1))
+                                    #marker = dict(color=subject_color, line=dict(width = 1))))
     ## Plot group average or multiple group averages
     if 'group' in groupby_var:
         for group in np.unique(avg_data['group']):
             avg_sub = avg_data.loc[avg_data['group'] == group]
             sem_sub = sem_data.loc[sem_data['group'] == group]
-            fig.add_trace(go.Scatter(x = avg_sub[x_var], y = avg_sub[y_var],
-                                     mode = 'lines+markers',
-                                     error_y = dict(type = 'data', array = sem_sub[y_var]),
-                                     line = dict(color = group_dict[group]), name=group, showlegend=True))
+            fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
+                                     mode='lines+markers',
+                                     error_y = dict(type='data', array=sem_sub[y_var]),
+                                     line = dict(color=group_dict[group]), name=group, showlegend=True))
     else:
-        fig.add_trace(go.Scatter(x = avg_data[x_var], y = avg_data[y_var],
-                                mode = 'lines+markers',
-                                error_y = dict(type = 'data', array = sem_data[y_var]),
-                                line = dict(color = avg_color)))
+        fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
+                                mode='lines+markers',
+                                error_y=dict(type='data', array=sem_data[y_var]),
+                                line=dict(color=avg_color)))
     ## Add dashed lines   
     if expert_line:
         fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)

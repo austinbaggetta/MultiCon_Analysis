@@ -1167,7 +1167,7 @@ def normalized_probe_metric(lick_array, reward_one, reward_two):
     return np.mean(value_list)
 
 
-def days_to_criteria(lick_df, mouse, criteria_val):
+def days_to_criteria(lick_df, mouse, criteria_val, pc_column='percent_correct'):
     """
     Calculate number of days to reach criteria for a mouse.
     Args:
@@ -1180,7 +1180,7 @@ def days_to_criteria(lick_df, mouse, criteria_val):
     Returns:
         an array with number of days to reach criteria in each context
     """
-    sub_df = lick_df[(lick_df['mouse'] == mouse) & (lick_df['percent_correct'] >= criteria_val)].reset_index(drop=True)
+    sub_df = lick_df[(lick_df['mouse'] == mouse) & (lick_df[pc_column] >= criteria_val)].reset_index(drop=True)
     return np.concatenate((np.asarray([sub_df['day'][0]]), np.diff(sub_df['day'])))
 
 
