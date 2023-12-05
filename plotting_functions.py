@@ -10,23 +10,25 @@ import os
 import circletrack_behavior as ctb
 
 
-def custom_graph_template(x_title, y_title, template = 'simple_white', height = 500, width = 500,
-                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=18, **kwargs):
+def custom_graph_template(x_title, y_title, template = 'simple_white', height = 500, width = 500, linewidth=1.5,
+                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=22, font_family='Arial', **kwargs):
     """
     Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
     """
     fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, **kwargs)
-    fig.update_yaxes(title = y_title)
-    fig.update_xaxes(title = x_title)
+    fig.update_yaxes(title=y_title, linewidth=linewidth)
+    fig.update_xaxes(title=x_title, linewidth=linewidth)
     fig.update_layout(title={
         'y':0.9,
         'x':0.5,
         'xanchor': 'center',
         'yanchor': 'top'})
     fig.update_annotations(font_size=font_size)
-    fig.update_layout(template = template, height = height, width = width, font=dict(size=font_size))
+    fig.update_layout(template=template, height=height, width=width, font=dict(size=font_size), font_family=font_family)
     if shared_x:
         fig.update_xaxes(matches='x')
+    if shared_y:
+        fig.update_yaxes(matches='y')
     return fig
 
 
@@ -149,7 +151,7 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
             else:
                 subject_color = marker_color
             fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var],
-                                    mode='lines', opacity=0.5, name=subject, line_color=subject_color, line_width=1))
+                                    mode='lines', opacity=0.8, name=subject, line_color=subject_color, line_width=1))
                                     #marker = dict(color=subject_color, line=dict(width = 1))))
     ## Plot group average or multiple group averages
     if 'group' in groupby_var:
@@ -343,9 +345,9 @@ def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue',
     return fig
 
 
-def plot_linearized_position(aligned_behavior, trials, forward_trials, reverse_trials, angle_type = 'radians', forward_trial_color = 'green', reverse_trial_color = 'orchid'):
+def plot_linearized_position(aligned_behavior, trials, forward_trials, reverse_trials, shift_factor=0, angle_type = 'radians', forward_trial_color = 'green', reverse_trial_color = 'orchid'):
     ## Get linearized position 
-    linearized_position = ctb.linearize_trajectory(aligned_behavior, angle_type = angle_type, shift_factor = 0)
+    linearized_position = ctb.linearize_trajectory(aligned_behavior, angle_type=angle_type, shift_factor=shift_factor)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x = aligned_behavior.timestamp, y = linearized_position, line = dict(color = 'black'), showlegend = False))
     for forward in enumerate(forward_trials):
@@ -447,7 +449,7 @@ def plot_circle_position(behav, position_color='grey', position_size=4, lick_col
 
 
 def plot_group_averages(df, y_col_name, x_col_name, group_color_dict, mouse_grouping_variables=['mouse', 'session', 'group'], 
-                        avg_grouping_variables=['group', 'session'], x_axis_order=None, **kwargs):
+                        avg_grouping_variables=['group', 'session'], flip_order=False, x_axis_order=None, **kwargs):
     """ 
     Plot averages for different groups of mice.
     Args:
@@ -471,7 +473,12 @@ def plot_group_averages(df, y_col_name, x_col_name, group_color_dict, mouse_grou
     fig = px.strip(mouse_grouped_data, x=x_col_name, y=y_col_name, color='group', hover_name='mouse',
                    color_discrete_sequence=list(group_color_dict.values())).update_traces(showlegend=False, opacity=0.8, marker_line_width=1)
     
-    for group in np.unique(df['group']):
+    if flip_order:
+        group_list = np.flip(np.unique(df['group']))
+    else:
+        group_list = np.unique(df['group'])
+
+    for group in group_list:
         group_df = avg_df[avg_df['group'] == group]
         fig.add_trace(go.Bar(x=group_df[x_col_name], y=group_df[y_col_name]['mean'],
                              error_y=dict(type='data', array=group_df[y_col_name]['sem'], thickness=2.5, width=10),
@@ -481,4 +488,39 @@ def plot_group_averages(df, y_col_name, x_col_name, group_color_dict, mouse_grou
     fig.update_layout(**kwargs)
     if x_axis_order is not None:
         fig.update_xaxes(categoryorder='array', categoryarray=x_axis_order)
+    return fig
+
+
+def visualize_individual_cell(spike_data, calcium_data, cell_number, downsample_factor=20, show_rewards=True, **kwargs):
+    """ 
+    Used to visually inspect circle track location data as well as how well the S matrix recapitulates the C matrix.
+    Args:
+        spike_data, calcium_data : xarray.DataArray
+            S and C matrix from Minian that has been preprocessed to align neural results with behavior.
+        cell_number : int
+            Cell you will visualize, based on indexing rather than choosing unit_id
+        downsample_factor : int
+            By how much you want to downsample the position data for visualization purposes.
+        show_rewards : boolean
+            By default True; adds markers to where the reward ports are on the circle.
+    Returns:
+        fig : plotly.graph_object
+            Two panel figure of circle track position overlaid with cell firing positions in the first panel
+            and cell firing (both calcium and approximated spiking) across the session on the right.
+    """
+    fig = custom_graph_template(x_title='', y_title='', rows=1, columns=2, width=800)
+    cell_spike_data = spike_data[spike_data['unit_id'] == cell_number]
+    cell_calc_data = calcium_data[calcium_data['unit_id'] == cell_number]
+    ## Firing locations of cell
+    fig.add_trace(go.Scatter(x=spike_data['x'].values[::downsample_factor], y=spike_data['y'].values[::downsample_factor], 
+                        mode='markers', marker_color='darkgrey', showlegend=False), row=1, col=1)
+    fig.add_trace(go.Scatter(x=spike_data['x'].values[cell_spike_data.values[0] > 0], y=spike_data['y'].values[cell_spike_data.values[0] > 0], 
+                        mode='markers', marker_color='red', showlegend=False), row=1, col=1)
+    if show_rewards:
+        fig.add_trace(go.Scatter(x=spike_data['x'].values[spike_data['water'].values], y=spike_data['y'].values[spike_data['water'].values], 
+                                mode='markers', marker_color='black', showlegend=False, opacity=0.5), row=1, col=1)
+    ## Calcium trace
+    fig.add_trace(go.Scatter(x=calcium_data['behav_t'].values, y=cell_calc_data.values, mode='lines', line_color='darkgrey', showlegend=False), row=1, col=2)
+    ## Approximated spiking of cell
+    fig.add_trace(go.Scatter(x=spike_data['behav_t'].values, y=cell_spike_data.values, mode='lines', line_color='red', showlegend=False), row=1, col=2)
     return fig
