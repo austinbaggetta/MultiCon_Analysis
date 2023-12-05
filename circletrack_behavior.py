@@ -935,7 +935,7 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
     return signal
 
 
-def aggregate_metrics(signal, bin_size = 5):
+def aggregate_metrics(signal, bin_size=5):
     """
     Bins your hits, misses, FA, CR, and dprime according to bin_size.
     """
@@ -946,6 +946,20 @@ def aggregate_metrics(signal, bin_size = 5):
         avg_value = [np.nanmean(bin) for bin in binned if bin.size > 0] ## if bin.size > 0 removes any empty array in binned
         aggregated_data[key] = avg_value
     return aggregated_data
+
+
+def bin_data(data, bin_size=2):
+    """
+    Used to bin percent correct if calculated on a trial by trial basis.
+    Args:
+        data : list
+        bin_size : int
+    Returns:
+        binned_data : list
+    """
+    bins = np.arange(0, len(data), bin_size)
+    binned = np.split(data, bins)
+    return [np.nanmean(bin) for bin in binned if bin.size > 0]
 
 
 def trial_averages(mouse_trial_times, session_list, forward = False):
