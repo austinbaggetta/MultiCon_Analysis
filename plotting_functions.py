@@ -491,7 +491,7 @@ def plot_group_averages(df, y_col_name, x_col_name, group_color_dict, mouse_grou
     return fig
 
 
-def visualize_individual_cell(spike_data, calcium_data, cell_number, downsample_factor=20, show_rewards=True, **kwargs):
+def visualize_individual_cell(spike_data, calcium_data, cell_number, downsample_factor=20, show_rewards=True, spiking_threshold=None, **kwargs):
     """ 
     Used to visually inspect circle track location data as well as how well the S matrix recapitulates the C matrix.
     Args:
@@ -508,19 +508,48 @@ def visualize_individual_cell(spike_data, calcium_data, cell_number, downsample_
             Two panel figure of circle track position overlaid with cell firing positions in the first panel
             and cell firing (both calcium and approximated spiking) across the session on the right.
     """
-    fig = custom_graph_template(x_title='', y_title='', rows=1, columns=2, width=800)
+    fig = custom_graph_template(**kwargs)
     cell_spike_data = spike_data[spike_data['unit_id'] == cell_number]
     cell_calc_data = calcium_data[calcium_data['unit_id'] == cell_number]
     ## Firing locations of cell
     fig.add_trace(go.Scatter(x=spike_data['x'].values[::downsample_factor], y=spike_data['y'].values[::downsample_factor], 
                         mode='markers', marker_color='darkgrey', showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=spike_data['x'].values[cell_spike_data.values[0] > 0], y=spike_data['y'].values[cell_spike_data.values[0] > 0], 
-                        mode='markers', marker_color='red', showlegend=False), row=1, col=1)
     if show_rewards:
         fig.add_trace(go.Scatter(x=spike_data['x'].values[spike_data['water'].values], y=spike_data['y'].values[spike_data['water'].values], 
                                 mode='markers', marker_color='black', showlegend=False, opacity=0.5), row=1, col=1)
     ## Calcium trace
-    fig.add_trace(go.Scatter(x=calcium_data['behav_t'].values, y=cell_calc_data.values, mode='lines', line_color='darkgrey', showlegend=False), row=1, col=2)
+    fig.add_trace(go.Scatter(x=calcium_data['behav_t'].values, y=cell_calc_data.values[0], mode='lines', line_color='darkgrey', showlegend=False), row=1, col=2)
     ## Approximated spiking of cell
-    fig.add_trace(go.Scatter(x=spike_data['behav_t'].values, y=cell_spike_data.values, mode='lines', line_color='red', showlegend=False), row=1, col=2)
+    if spiking_threshold is not None:
+        fig.add_trace(go.Scatter(x=spike_data['behav_t'].values, y=(cell_spike_data.values[0] > spiking_threshold).astype(int), 
+                                 mode='lines', line_color='red', showlegend=False), row=1, col=2)
+        fig.add_trace(go.Scatter(x=spike_data['x'].values[cell_spike_data.values[0] > spiking_threshold], y=spike_data['y'].values[cell_spike_data.values[0] > spiking_threshold], 
+                        mode='markers', marker_color='red', showlegend=False), row=1, col=1)
+    else:
+        fig.add_trace(go.Scatter(x=spike_data['behav_t'].values, y=cell_spike_data.values[0], mode='lines', line_color='red', showlegend=False), row=1, col=2)
+        fig.add_trace(go.Scatter(x=spike_data['x'].values[cell_spike_data.values[0] > 0], y=spike_data['y'].values[cell_spike_data.values[0] > 0], 
+                        mode='markers', marker_color='red', showlegend=False), row=1, col=1)
+    fig.update_yaxes(title='Y', row=1, col=1)
+    fig.update_yaxes(title='Amplitude (a.u.)', row=1, col=2)
+    fig.update_xaxes(title='X', row=1, col=1)
+    fig.update_xaxes(title='Time (s)', row=1, col=2)
+    return fig
+
+
+def plot_multiple_cells(calcium_data, xdata, start_cell, end_cell, shift_factor=4.6, **kwargs):
+    """
+    Plot multiple cell's calcium transients across time.
+    Args:
+        calcium_data : numpy.array
+        start_cell, end_cell : int
+            dictates what cells you will plot
+        shift_factor : float
+            how much to offset each calcium trace by in the plot
+    Returns:
+        fig : plotly.graph_object
+    """
+    fig = custom_graph_template(**kwargs)
+    for cell in np.arange(start_cell, end_cell):
+            fig.add_trace(go.Scattergl(x=xdata, y=calcium_data[cell]+(shift_factor*cell), showlegend=False))
+    fig.update_layout(yaxis=dict(visible=True, showticklabels=False))
     return fig
