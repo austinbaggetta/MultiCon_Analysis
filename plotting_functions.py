@@ -294,8 +294,8 @@ def plot_cell_contribution(assemblies, colorscale = 'Viridis', template = 'simpl
     fig.show(config={'scrollZoom':True})
 
 
-def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue', nonmem_color = 'black', 
-              hline_color = 'black', size = 2, opacity = 0.5, **kwargs):
+def stem_plot(pattern, baseline=0, plot_members=True, member_color='blue', nonmem_color='black', 
+              hline_color='black', size=2, opacity=0.5, **kwargs):
     """
     Create a stem plot, where the marker indicates the weight of that neuron in this ensemble. Members of the ensemble are plotted in a separate color.
     Args:
@@ -334,14 +334,14 @@ def stem_plot(pattern, baseline = 0, plot_members = True, member_color = 'blue',
     fig = custom_graph_template(**kwargs)
     for neuron in np.arange(0, n_neurons):
         if df.participants[neuron] == True:
-            fig.add_trace(go.Scatter(x = [df['location'][neuron], df['location'][neuron]], y = [0, df['head'][neuron]], mode = 'lines+markers', 
-                          line=dict(width=1, color=member_color), marker=dict(color=member_color), opacity = opacity, showlegend=False))
+            fig.add_trace(go.Scatter(x=[df['location'][neuron], df['location'][neuron]], y=[0, df['head'][neuron]], mode='lines+markers', 
+                          line=dict(width=1, color=member_color), marker=dict(color=member_color), opacity=opacity, showlegend=False))
         else:
-            fig.add_trace(go.Scatter(x = [df['location'][neuron], df['location'][neuron]], y = [0, df['head'][neuron]], mode = 'lines+markers', 
-                          line=dict(width=1, color=nonmem_color), marker=dict(color=nonmem_color), opacity = opacity, showlegend=False))
+            fig.add_trace(go.Scatter(x=[df['location'][neuron], df['location'][neuron]], y=[0, df['head'][neuron]], mode='lines+markers', 
+                          line=dict(width=1, color=nonmem_color), marker=dict(color=nonmem_color), opacity=opacity, showlegend=False))
     ## Change marker size, change template, add x/y titles, title, and horizontal line at zero
-    fig.update_traces(marker=dict(size = size))
-    fig.add_hline(y = baseline, line_dash = 'solid', opacity = 1, line_width = 1, line_color = hline_color)
+    fig.update_traces(marker=dict(size=size))
+    fig.add_hline(y=baseline, line_dash='solid', opacity=1, line_width=1, line_color=hline_color)
     return fig
 
 
@@ -400,19 +400,14 @@ def plot_raster(data, bool_data, time, colorscale = 'gray_r', line_color = 'blac
     return fig
 
 
-def plot_activation_strength(activations, ensemble_number, figure_path = None, x_bin_size = None, 
-                             title = '', y_title = 'Max Z Score', x_title = '', file_name = '', marker_color = 'red'):
+def plot_activation_strength(activations, ensemble_number, figure_path=None, x_bin_size=None, file_name='', marker_color='red', **kwargs):
     if x_bin_size is not None:
         time_vector = np.arange(0, activations.shape[1]*x_bin_size, x_bin_size)
     else:
         time_vector = np.arange(0, activations.shape[1])
-    title = title + ' - Ensemble {}'.format(ensemble_number)
-    fig = custom_graph_template(title = title, y_title = y_title, x_title = x_title)
-    fig.add_trace(go.Scatter(x = time_vector, y = activations[ensemble_number],
-                            mode = 'markers', marker_color = marker_color, opacity = 0.7))
-    fig.show()
-    if figure_path is not None:
-        fig.write_image(pjoin(figure_path, file_name))
+    fig = custom_graph_template(**kwargs)
+    fig.add_trace(go.Scatter(x=time_vector, y=activations[ensemble_number],
+                            mode='markers', marker_color=marker_color, opacity =0.7))
     return fig
 
 
