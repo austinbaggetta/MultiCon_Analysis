@@ -991,7 +991,7 @@ def calculate_proportions_ensembles(trends, function = None):
     return proportion_dict
 
 
-def save_detected_ensembles(path, mouse, neural_dict, binarize = True, smooth_factor = None, nullhyp = 'circ', n_shuffles = 500):
+def save_detected_ensembles(path, neural_dict, binarize=True, smooth_factor=None, nullhyp='circ', n_shuffles=500):
     """
     This function saves each output from the find_assemblies function above into a pickle file for future use.
     Args:
@@ -1019,10 +1019,10 @@ def save_detected_ensembles(path, mouse, neural_dict, binarize = True, smooth_fa
             neural_data = neural_dict[key].values
         ## Smooth data using a moving average
         if smooth_factor is not None:
-            smoothed_data = ctn.moving_average(neural_data, ksize = smooth_factor)
+            smoothed_data = ctn.moving_average(neural_data, ksize=smooth_factor)
         else:
             smoothed_data = neural_data
-        assemblies = find_assemblies(smoothed_data, nullhyp = nullhyp, n_shuffles = n_shuffles)
+        assemblies = find_assemblies(smoothed_data, nullhyp=nullhyp, n_shuffles=n_shuffles)
         ## Save activations and patterns in the same nc file
         act = assemblies['activations']
         pat = assemblies['patterns']
@@ -1053,7 +1053,7 @@ def save_detected_ensembles(path, mouse, neural_dict, binarize = True, smooth_fa
                                     coords = {'en_id': np.arange(pat.shape[0]), 'unit_id': neural_dict[key].unit_id.values},
                                     name = 'patterns')
         ## Save activations and patterns to netcdf files
-        data_path = pjoin(path, '{}_{}.nc'.format(mouse, key))
+        data_path = pjoin(path, key)
         ica_data = xr.merge([activations, patterns])
         ica_data.to_netcdf(data_path)
 
@@ -1127,4 +1127,26 @@ def ensemble_membership(assemblies):
         participants.append(participating_cells)
     return participants
         
+
+def get_ensemble_members(patterns, member_type):
+    """
+    Gets which unit_ids are considered members of an ensemble, determined by 2std above the mean weight.
+    Args:
+        patterns : xarray.DataArray
+        member_type : str
+            one of ['pos', 'neg', 'both']
+    Returns:
+        xarray.DataArray
+    """
+    ensemble_cutoff_pos = (patterns.mean() + (patterns.std() * 2))
+    ensemble_cutoff_neg = (patterns.mean() - (patterns.std() * 2))
+    if member_type == 'pos':
+        participants = patterns > ensemble_cutoff_pos
+    elif member_type == 'neg':
+        participants = patterns < ensemble_cutoff_neg
+    elif member_type == 'both':
+        participants = (patterns > ensemble_cutoff_pos) | (patterns < ensemble_cutoff_neg)
+    else:
+        raise Exception('Incorrect member_type argument!')
+    return patterns[participants]
        
