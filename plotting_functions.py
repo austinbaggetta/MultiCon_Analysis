@@ -548,3 +548,34 @@ def plot_multiple_cells(calcium_data, xdata, start_cell, end_cell, shift_factor=
             fig.add_trace(go.Scattergl(x=xdata, y=calcium_data[cell]+(shift_factor*cell), showlegend=False))
     fig.update_layout(yaxis=dict(visible=True, showticklabels=False))
     return fig
+
+
+def plot_spatial_footprints(A, unit_ids=None, threshold=0, base_color='gray', max_proj=None, showlegend=True, **kwargs):
+    """
+    Plots spatial footprints of cells, and can plot specific subpopulations on top of the max projection.
+    Args:
+        A : xarray.DataArray
+            output from Minian, spatial footprints of cells
+        unit_ids : list or np.array
+            unit_ids of specific cells to plot on top of max projection, by default None
+        threshold : int
+            used for binarizing member spatial footprints
+        base_color : str
+            colorscale of max projection
+        max_proj : xarray.DataArray
+            output from Minian. If not included, max_proj will be calculated from the spatial footprints.
+    Returns:
+        plotly.graph_object
+    """
+    if max_proj is None:
+        max_proj = A.max(axis=0)
+
+    fig = custom_graph_template(**kwargs)
+    fig.add_trace(go.Heatmap(z=max_proj, colorscale=base_color, showscale=False))
+
+    if unit_ids is not None:
+        sub_max = A.sel({'unit_id': unit_ids}).max(axis=0)
+        sub_max_bin = (sub_max > threshold).astype(int)
+        sub_max_bin = sub_max_bin.where(sub_max_bin.values == 1, np.nan)
+        fig.add_trace(go.Heatmap(z=sub_max_bin, colorscale='Viridis', showscale=False, opacity=0.6, name='Spatial Footprints', showlegend=showlegend))
+    return fig
