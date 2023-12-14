@@ -593,8 +593,8 @@ def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
         raise Exception("Direction must be 'positive' or 'negative'!")
         
 
-def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test = 'pearson', 
-                                    iterations = 1000, plot_distribution = False):
+def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test='pearson', 
+                                    iterations=1000, plot_distribution=False):
     """
     Used to perform bootstrap analysis of either Pearson correlation test statistics or cosine similarity values.
     Args:
@@ -615,26 +615,19 @@ def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test = '
     for e in range(0, assemblies_sess1['patterns'].shape[0]):
         for n_times in range(1, iterations+1):
             for i in range(0, assemblies_sess2['patterns'].shape[0]):
-                samples = np.random.choice(assemblies_sess2['patterns'][i], assemblies_sess2['patterns'].shape[1],
-                                           replace = False)
+                samples = np.random.choice(assemblies_sess2['patterns'][i], assemblies_sess2['patterns'].shape[1], replace=False)
                 ## Use pearson correlation to get a distribution of test statistics
                 if test == 'pearson':
                     res = pearsonr(assemblies_sess1['patterns'][e], samples)
-                    dictionary['ensemble_id1'].append(e)
-                    dictionary['ensemble_id2'].append(i)
-                    dictionary['statistic'].append(res[0])
-                    dictionary['pvalue'].append(res[1])
-                    dictionary['iteration'].append(n_times)
-                ## Use cosine similarity to get a distribution of similarity values
                 elif test == 'cosine_similarity':
                     res = (1 - spatial.distance.cosine(assemblies_sess1['patterns'][e], samples))
-                    dictionary['ensemble_id1'].append(e)
-                    dictionary['ensemble_id2'].append(i)
-                    dictionary['statistic'].append(res)
-                    dictionary['pvalue'].append(np.nan)
-                    dictionary['iteration'].append(n_times)
                 else:
                     raise Exception("Incorrect 'test' argument! Must be one of ['pearson', 'cosine_similarity']")
+                dictionary['ensemble_id1'].append(e)
+                dictionary['ensemble_id2'].append(i)
+                dictionary['statistic'].append(res)
+                dictionary['pvalue'].append(np.nan)
+                dictionary['iteration'].append(n_times)
     ## Convert to dataframe           
     df = pd.DataFrame(dictionary)
     ## Histogram
