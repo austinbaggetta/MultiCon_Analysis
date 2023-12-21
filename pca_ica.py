@@ -28,6 +28,7 @@ from os.path import join as pjoin
 ## Austin's custom py files
 import circletrack_behavior as ctb
 import circletrack_neural as ctn
+import plotting_functions as pf
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -536,7 +537,7 @@ def bin_avg_transient(data, bin_size_seconds, fps = 15, analysis_type = 'average
         average_values = [np.mean(bin, axis = 0) for bin in binned]
         return average_values
 
-def calculate_ensemble_correlation_shared(assemblies_sess1, assemblies_sess2, test = 'pearson'):
+def calculate_ensemble_correlation_shared(assemblies_sess1, assemblies_sess2, test='pearson'):
     """
     Used to calculate the pearson/spearman correlation or cosine similarity between two sessions.
     Requires cells to be shared between two sessions.
@@ -569,7 +570,7 @@ def calculate_ensemble_correlation_shared(assemblies_sess1, assemblies_sess2, te
     return corr
 
 
-def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
+def identify_correlated_ensembles(corr, alpha=0.05, direction='positive'):
     """
     Identifies positively or negatively correlated ensembles calculated from the calculate_ensemble_correlation function.
     Args:
@@ -593,8 +594,7 @@ def identify_correlated_ensembles(corr, alpha = 0.05, direction = 'positive'):
         raise Exception("Direction must be 'positive' or 'negative'!")
         
 
-def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test='pearson', 
-                                    iterations=1000, plot_distribution=False):
+def bootstrap_ensemble_correlations(patterns_one, patterns_two, test='pearson', iterations=500):
     """
     Used to perform bootstrap analysis of either Pearson correlation test statistics or cosine similarity values.
     Args:
@@ -612,32 +612,28 @@ def bootstrap_ensemble_correlations(assemblies_sess1, assemblies_sess2, test='pe
             pvalue is NaN if cosine similarity is calculated
     """
     dictionary = {'ensemble_id1': [], 'ensemble_id2': [], 'statistic': [], 'pvalue': [], 'iteration': []}
-    for e in range(0, assemblies_sess1['patterns'].shape[0]):
-        for n_times in range(1, iterations+1):
-            for i in range(0, assemblies_sess2['patterns'].shape[0]):
-                samples = np.random.choice(assemblies_sess2['patterns'][i], assemblies_sess2['patterns'].shape[1], replace=False)
+    for e in np.arange(0, patterns_one.shape[0]):
+        for n_times in np.arange(1, iterations+1):
+            for i in np.arange(0, patterns_two.shape[0]):
+                samples = np.random.choice(patterns_two[i], patterns_two.shape[1], replace=False)
                 ## Use pearson correlation to get a distribution of test statistics
                 if test == 'pearson':
-                    res = pearsonr(assemblies_sess1['patterns'][e], samples)
+                    res = pearsonr(patterns_one[e], samples)
                 elif test == 'cosine_similarity':
-                    res = (1 - spatial.distance.cosine(assemblies_sess1['patterns'][e], samples))
+                    res = (1 - spatial.distance.cosine(patterns_one['patterns'][e], samples))
                 else:
                     raise Exception("Incorrect 'test' argument! Must be one of ['pearson', 'cosine_similarity']")
                 dictionary['ensemble_id1'].append(e)
                 dictionary['ensemble_id2'].append(i)
-                dictionary['statistic'].append(res)
-                dictionary['pvalue'].append(np.nan)
+                dictionary['statistic'].append(res[0])
+                dictionary['pvalue'].append(res[1])
                 dictionary['iteration'].append(n_times)
     ## Convert to dataframe           
     df = pd.DataFrame(dictionary)
-    ## Histogram
-    if plot_distribution:
-        fig = px.histogram(df, x = 'statistic', template = 'simple_white')
-        fig.show()
     return df
 
 
-def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percentile = 95, direction = 'positive', test = 'correlations'):
+def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percentile=95, direction='positive'):
     """
     Determine matched ensembles.
     Args:
@@ -649,33 +645,49 @@ def test_bootstrap_correlations(corr_ensembles, bootstrap_correlations, percenti
             what percentile the test statistic has to be above to be kept; by default 95th percentile
         direction : str
             must be one of ['positive', 'negative']; must be the same as identify_correlated_ensembles
-        test : str
-            must be one of ['correlations', 'cosine_similarity']
     Returns:
         matched : pandas.DataFrame
            pd.DataFrame with columns ensemble_id1, ensemble_id2, statistic, and pvalue
            These are the ensemble pairs that are above the given percentile
     """
     ## Find out what statistic value represents that percentile
-    cutoff = np.percentile(bootstrap_correlations['statistic'], percentile)
-    ## Get ensemble comparisons that fall above 95% on either side of the distribution
-    if test == 'correlations':
+    matched = pd.DataFrame()
+    for ensemble_id in np.unique(bootstrap_correlations['ensemble_id2']):
+        cutoff = np.percentile(bootstrap_correlations['statistic'][bootstrap_correlations['ensemble_id2'] == ensemble_id], percentile)
+        ensemble_data = corr_ensembles[corr_ensembles['ensemble_id2'] == ensemble_id]
         if direction == 'positive':
-            matched = corr_ensembles.loc[corr_ensembles.statistic > cutoff]
+            matched_loop = ensemble_data.loc[ensemble_data['statistic'] > cutoff]
         elif direction == 'negative':
-            matched = corr_ensembles.loc[corr_ensembles.statistic < (-cutoff)]
+            matched_loop = ensemble_data.loc[ensemble_data['statistic'] < (-cutoff)]
         else:
-            raise Exception("No direction given! Must be one of ['positive', 'negative']")
-    elif test == 'cosine_similarity':
-        if direction == 'positive':
-            matched = corr_ensembles.loc[corr_ensembles.statistic > cutoff]
-        elif direction == 'negative':
-            matched = corr_ensembles.loc[corr_ensembles.statistic < (-cutoff)]
-        else:
-            raise Exception("No direction given! Must be one of ['positive', 'negative']")
-    else:
-        raise Exception("No test given! Must be one of ['correlations', 'cosine_similarity']")
+            raise Exception('Incorrect direction string! Must be one of positive, negative')
+        matched = pd.concat([matched, matched_loop])
     return matched
+
+
+def resolve_matched_ensembles(matched, column_ids=['ensemble_id1', 'ensemble_id2']):
+    """ 
+    Finds pairs of ensembles with the highest correlation between them. 
+    Args:
+        matched : pandas.DataFrame
+            output from test_bootstrap_correlations function, rough set of matches for ensembles between two sessions
+            one ensemble can be matched to many ensembles from this output
+        column_ids : list
+            list of string values for the column names to be looped through;
+            by default ['ensemble_id1', 'ensemble_id2']
+    """
+    ensemble_pairs = pd.DataFrame()
+    for ensemble_id in np.unique(matched[column_ids[0]]):
+        ensemble_data = matched[matched[column_ids[0]] == ensemble_id]
+        ensemble_pair = ensemble_data[ensemble_data['statistic'] == np.max(ensemble_data['statistic'])]
+        ensemble_pairs = pd.concat([ensemble_pairs, ensemble_pair]).reset_index(drop=True)
+
+    matched_ensembles = pd.DataFrame()
+    for ensemble_id in np.unique(ensemble_pairs[column_ids[1]]):
+        ensemble_data = ensemble_pairs[ensemble_pairs[column_ids[1]] == ensemble_id]
+        final_matches = ensemble_data[ensemble_data['statistic'] == np.max(ensemble_data['statistic'])]
+        matched_ensembles = pd.concat([matched_ensembles, final_matches]).reset_index(drop=True)
+    return matched_ensembles
 
 
 def align_activations_to_behavior(activations, aligned_behavior):
@@ -1121,18 +1133,20 @@ def ensemble_membership(assemblies):
     return participants
         
 
-def get_ensemble_members(patterns, member_type):
+def get_ensemble_members(patterns, member_type, std_size=2):
     """
-    Gets which unit_ids are considered members of an ensemble, determined by 2std above the mean weight.
+    Gets which unit_ids are considered members of an ensemble, determined by std_size above the mean weight.
     Args:
         patterns : xarray.DataArray
         member_type : str
             one of ['pos', 'neg', 'both']
+        std_size : float
+            how many standard deviations above the mean, by default 2
     Returns:
         xarray.DataArray
     """
-    ensemble_cutoff_pos = (patterns.mean() + (patterns.std() * 2))
-    ensemble_cutoff_neg = (patterns.mean() - (patterns.std() * 2))
+    ensemble_cutoff_pos = (patterns.mean() + (patterns.std() * std_size))
+    ensemble_cutoff_neg = (patterns.mean() - (patterns.std() * std_size))
     if member_type == 'pos':
         participants = patterns > ensemble_cutoff_pos
     elif member_type == 'neg':
@@ -1142,4 +1156,58 @@ def get_ensemble_members(patterns, member_type):
     else:
         raise Exception('Incorrect member_type argument!')
     return patterns[participants]
+
+
+def match_ensembles_between_sessions(mouse, crossregistration_path, assembly_path, session_one, session_two, 
+                                    direction, test='pearson', iterations=100, alpha=0.05, percentile=99):
+    """ 
+    
+    """
+    
+    mappings = pd.read_feather(pjoin(crossregistration_path, f'{mouse}.feat'))
+    assembly_one = load_session_assemblies(mouse, assembly_path, session_one)
+    assembly_two = load_session_assemblies(mouse, assembly_path, session_two)
+
+    ## Get pairs of cells between the two sessions of interest
+    pairs = mappings.loc[:, [f'{session_one}', f'{session_two}']].dropna()
+    ## Select cells from the cells that are paired between the two sessions
+    session_one_units = pairs.loc[:, f'{session_one}'].to_numpy()
+    session_two_units = pairs.loc[:, f'{session_two}'].to_numpy()
+    a_first = assembly_one.sel(unit_id=session_one_units)
+    a_second = assembly_two.sel(unit_id=session_two_units)
+    ## Calculate the correlation between weights for all ensmbles in both sessions
+    corr = calculate_ensemble_correlation_shared(a_first, a_second, test=test)
+    pos_corr = identify_correlated_ensembles(corr, alpha=alpha, direction=direction)
+    ## Bootstrap
+    df = bootstrap_ensemble_correlations(a_first['patterns'], a_second['patterns'], test=test, iterations=iterations)
+    ## Match ensembles based on statistic value being above whatever percentile value of the bootstrap distribution
+    matched = test_bootstrap_correlations(pos_corr, df, percentile=percentile, direction=direction)
+    matched_ensembles = resolve_matched_ensembles(matched)
+    return matched_ensembles
+
+
+def determine_proportion_matched(mouse, mouse_ensembles, matched_ensembles, session_of_interest, ensemble_id_column='ensemble_id2'):
+    results_dict = {'mouse': [], 'num_fading': [], 'num_fading_matched': [], 'num_nonfading': [], 'num_nonfading_matched': []}
+    ## Compare fading ensembles from the second session with the matched ensembles
+    fading_ensemble_list = mouse_ensembles[mouse][session_of_interest]['decreasing']
+    nonfading_ensemble_list = mouse_ensembles[mouse][session_of_interest]['no trend']
+
+    fading_ensembles = pd.DataFrame()
+    for fading_ens in fading_ensemble_list:
+        ensemble = matched_ensembles[matched_ensembles[ensemble_id_column] == fading_ens]
+        fading_ensembles = pd.concat([fading_ensembles, ensemble])
+    fading_ensembles['mouse'] = mouse
+
+    nonfading_ensembles = pd.DataFrame()
+    for nonfading in nonfading_ensemble_list:
+        ensemble_non = matched_ensembles[matched_ensembles[ensemble_id_column] == nonfading]
+        nonfading_ensembles = pd.concat([nonfading_ensembles, ensemble_non])
+    nonfading_ensembles['mouse'] = mouse
+
+    results_dict['mouse'].append(mouse)
+    results_dict['num_fading'].append(len(fading_ensemble_list))
+    results_dict['num_fading_matched'].append(len(fading_ensembles))
+    results_dict['num_nonfading'].append(len(nonfading_ensemble_list))
+    results_dict['num_nonfading_matched'].append(len(nonfading_ensembles))
+    return pd.DataFrame(results_dict), fading_ensembles, nonfading_ensembles
        
