@@ -10,7 +10,7 @@ import os
 import circletrack_behavior as ctb
 
 
-def custom_graph_template(x_title, y_title, template = 'simple_white', height = 500, width = 500, linewidth=1.5,
+def custom_graph_template(x_title, y_title, template='simple_white', height=500, width=500, linewidth=1.5,
                           titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=22, font_family='Arial', **kwargs):
     """
     Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
@@ -32,33 +32,8 @@ def custom_graph_template(x_title, y_title, template = 'simple_white', height = 
     return fig
 
 
-def colors(experiment, group):
-    """
-    Used to define colors for specific groupings. Can easily change colors here and will propogate to graphs.
-    Args:
-        experiment : str
-            one of ['mc_af']
-        group : str
-            one of ['pre', 'session', 'post']
-    """
-    if experiment == 'mc_af':
-        if group == 'pre':
-            return 'darkgrey'
-        elif group == 'session':
-            return 'rgb(118,78,159)'
-        elif group == 'post':
-            return 'turquoise'
-        else:
-            raise Exception('Incorrect group name! Must be one of [pre, session, post].')
-    elif experiment == 'mc_control':
-        if group == 'control':
-            return '#F58518'
-        else:
-            raise Exception('Incorrect group name! Must be one of [control]')
-
-
-def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Viridis', boundaries = None, 
-                            line_width = 1.5, boundary_color = 'red', template = 'simple_white', width = 800, height = 800):
+def create_pairwise_heatmap(data, index, column, value, graph, colorscale='Viridis', boundaries=None, 
+                            line_width=1.5, boundary_color='red', **kwargs):
     """
     Used to create pairwise comparison heatmaps for all days.
     Args: 
@@ -77,23 +52,20 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
         fig : plotly object
     """
     ## Create heatmap matrix
-    matrix = data.pivot_table(index = index, columns = column, values = value)
-    matrix = matrix.sort_values(by = index)
-    matrix = matrix.sort_values(by = column, axis = 1)
+    matrix = data.pivot_table(index=index, columns=column, values=value)
+    matrix = matrix.sort_values(by=index)
+    matrix = matrix.sort_values(by=column, axis=1)
     ## Create figure
-    fig = go.Figure()
-    fig.add_trace(go.Heatmap(z = matrix.values,
-                             x = matrix.index,
-                             y = matrix.columns,
-                             colorscale = colorscale))
+    fig = custom_graph_template(**kwargs)
+    fig.add_trace(go.Heatmap(z=matrix.values,
+                             x=matrix.index,
+                             y=matrix.columns,
+                             colorscale=colorscale))
     ## Loop through context boundaries and add red line
     if boundaries is not None:
         for boundary in boundaries:
             fig.add_vline(x=boundary+0.5, line_width=line_width, line_color=boundary_color, opacity=1)
             fig.add_hline(y=boundary+0.5, line_width=line_width, line_color=boundary_color, opacity=1)  
-    ## Layout options
-    fig.update_layout(template = template, width = width, height = height,
-                      xaxis_title = 'Day', yaxis_title = 'Day')
     ## Based on what you chose to graph, set title and legend_title
     if graph == 'overlap':
         fig.update_layout(title = {'text': 'Cell Overlap Between Days',
@@ -113,7 +85,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale = 'Vir
 
 
 def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color='turquoise', chance_color='darkgrey', transition_color=['darkgrey'],
-                               marker_color = 'rgb(179,179,179)', plot_datapoints = True, expert_line=True, chance=True,
+                               marker_color='rgb(179,179,179)', plot_datapoints=True, expert_line=True, chance=True,
                                plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
@@ -270,28 +242,20 @@ def plot_across_groups(agg_data, groupby, separateby, plot_var, colors, title, d
     fig.show(config=config)
 
 
-def plot_cell_contribution(assemblies, colorscale = 'Viridis', template = 'simple_white', height = 800, width = 800):
+def plot_cell_contribution(assemblies, colorscale='Viridis', **kwargs):
     """
     Creates a heatmap of ensemble by cell, where the color indicates how strongly a cell weighs into an ensemble.
     Args:
         assemblies : dict
             output from find_assemblies function; dictionary has a key ['patterns']
     """
-    fig = go.Figure()
-    fig.add_trace(go.Heatmap(z = assemblies['patterns'],
-                            coloraxis = 'coloraxis'))
-    fig.update_layout(template = template,
-                      title = {'text': 'Cell Contribution to Each Ensemble',
-                            'xanchor': 'center',
-                            'y' : 0.9,
-                            'x' : 0.5}, 
-                      xaxis_title = 'Cell Number',
-                      yaxis_title = 'Ensemble Number',
-                      coloraxis = {'colorscale': colorscale},
-                      width = width,
-                      height = height)
-    fig.update_layout(coloraxis_colorbar = {'title': 'Weight'})
-    fig.show(config={'scrollZoom':True})
+    fig = custom_graph_template(**kwargs)
+    fig.add_trace(go.Heatmap(z=assemblies['patterns'],
+                            coloraxis='coloraxis'))
+    fig.update_layout(coloraxis={'colorscale': colorscale})
+    fig.update_layout(coloraxis_colorbar={'title': 'Weight'})
+    return fig
+    # fig.show(config={'scrollZoom':True})
 
 
 def stem_plot(pattern, baseline=0, plot_members=True, member_color='blue', nonmem_color='black', 
@@ -400,7 +364,7 @@ def plot_raster(data, bool_data, time, colorscale = 'gray_r', line_color = 'blac
     return fig
 
 
-def plot_activation_strength(activations, ensemble_number, figure_path=None, x_bin_size=None, file_name='', marker_color='red', **kwargs):
+def plot_activation_strength(activations, ensemble_number, x_bin_size=None, marker_color='red', **kwargs):
     if x_bin_size is not None:
         time_vector = np.arange(0, activations.shape[1]*x_bin_size, x_bin_size)
     else:
