@@ -1212,10 +1212,13 @@ def determine_proportion_matched(mouse, mouse_ensembles, matched_ensembles, sess
     return pd.DataFrame(results_dict), fading_ensembles, nonfading_ensembles
        
 
-def make_ensemble_raster(assemblies, bin_size=0.3, running_only=False, velocity_thresh=7):
+def make_ensemble_raster(assemblies, bin_size=0.3, running_only=False, velocity_thresh=7, ensemble_ids=None):
     lin_position = assemblies['lin_position'].values
     filler = np.zeros_like(lin_position)
-    activations = assemblies['activations'].values
+    if ensemble_ids is not None:
+        activations = assemblies['activations'].values[ensemble_ids]
+    else:
+        activations = assemblies['activations'].values
 
     if running_only:
         _, running = pc.define_running_epochs(x=assemblies['x'].values, y=assemblies['y'].values,
@@ -1240,3 +1243,71 @@ def make_ensemble_raster(assemblies, bin_size=0.3, running_only=False, velocity_
                 one_dim=True,
                 weights=activation)[0]
     return rasters, bin_edges
+
+
+def ensemble_types_across_sessions(mouse_list, dpath, behav_path, session_list, ms_to_s=True, x_bin_size=None, analysis_type='max', 
+                                   alpha_old=0.05, trial_type='all', zscored=False, z_thresh=None):
+    ## Create empty dictionaries
+    mouse_trends = {}
+    mouse_binned_activations = {}
+    mouse_slopes = {}
+    mouse_taus = {}
+    mouse_ensembles = {}
+    mouse_trial_times = {}
+    ## Loop through each mouse
+    for mouse in tqdm(mouse_list):
+        ## Create empty dictionaries to store output
+        determined_trends = {}
+        binned_activations_dict = {}
+        slopes_dict = {}
+        tau_dict = {}
+        trial_times = {}
+        ## Load assemblies
+        for session in session_list:
+            ## Load specific session's assemblies
+            assemblies = load_session_assemblies(mouse, dpath, session)
+            ## Set activation values as act
+            act = assemblies['activations'].values
+            ## Load a specific session's behavior data
+            if x_bin_size is None:
+                behav_file = pjoin(behav_path, '{}_{}.feat'.format(mouse, session))
+                aligned_behavior = pd.read_feather(behav_file)
+                ## Get which timestamps are part of which trial for the aligned behavior data
+                trials = aligned_behavior['trials']
+                ## Get length of time for each trial
+                time_diff = []
+                for trial in np.unique(trials):
+                    ## Subset aligned_behavior by a given trial
+                    behavior = aligned_behavior.loc[trials == trial]
+                    ## Get the first and last timestamp to determine the window
+                    first_timestamp, last_timestamp = behavior['t'].to_numpy()[0], behavior['t'].to_numpy()[-1]
+                    if ms_to_s:
+                        ## Convert from ms to s
+                        first_timestamp = first_timestamp / 1000
+                        last_timestamp = last_timestamp / 1000
+                    ## Append to time_diff list
+                    time_diff.append(last_timestamp - first_timestamp)
+                trial_times[session] = time_diff
+            ## This is where the data gets binned either by even time intervals or by trials
+            if x_bin_size is not None:
+                trends, binned_activations, slopes, tau = define_ensemble_trends_across_time(act, z_threshold=z_thresh, x_bin_size=x_bin_size, analysis_type=analysis_type, 
+                                                                                             zscored=zscored, alpha_old=alpha_old)  
+            else:
+                ## Define ensemble trends across trials to determine if activation strength is increasing/decreasing across the session
+                trends, binned_activations, slopes, tau = define_ensemble_trends_across_trials(act, aligned_behavior, trial_type=trial_type, 
+                                                                                               z_threshold=z_thresh, alpha_old=alpha_old, analysis_type=analysis_type)
+            ## Save to dictionaries
+            determined_trends[session] = trends
+            binned_activations_dict[session] = binned_activations
+            slopes_dict[session] = slopes
+            tau_dict[session] = tau
+        ## Determine the proportion of ensembles that are increasing, decreasing, or have no trend based on their activation strength across time
+        proportion_dict = calculate_proportions_ensembles(determined_trends)
+        ## Save to mouse dictionaries before looping to the next mouse
+        mouse_trends[mouse] = proportion_dict
+        mouse_binned_activations[mouse] = binned_activations_dict
+        mouse_slopes[mouse] = slopes_dict
+        mouse_taus[mouse] = tau_dict
+        mouse_ensembles[mouse] = determined_trends
+        mouse_trial_times[mouse] = trial_times
+    return mouse_trends, mouse_binned_activations, mouse_slopes, mouse_taus, mouse_ensembles, mouse_trial_times
