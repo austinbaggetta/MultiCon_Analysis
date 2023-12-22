@@ -28,7 +28,7 @@ from os.path import join as pjoin
 ## Austin's custom py files
 import circletrack_behavior as ctb
 import circletrack_neural as ctn
-import plotting_functions as pf
+import place_cells as pc
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -1211,3 +1211,32 @@ def determine_proportion_matched(mouse, mouse_ensembles, matched_ensembles, sess
     results_dict['num_nonfading_matched'].append(len(nonfading_ensembles))
     return pd.DataFrame(results_dict), fading_ensembles, nonfading_ensembles
        
+
+def make_ensemble_raster(assemblies, bin_size=0.3, running_only=False, velocity_thresh=7):
+    lin_position = assemblies['lin_position'].values
+    filler = np.zeros_like(lin_position)
+    activations = assemblies['activations'].values
+
+    if running_only:
+        _, running = pc.define_running_epochs(x=assemblies['x'].values, y=assemblies['y'].values,
+                                              t=assemblies['behav_t'], velocity_thresh=velocity_thresh)
+    else:
+        running = np.ones_like(assemblies['frame'].values, dtype=bool)
+
+    bin_edges = pc.spatial_bin(lin_position, filler, bin_size_cm=bin_size, nbins=None, one_dim=True)[1]
+    rasters = nan_array((activations.shape[0], int(np.max(assemblies['trials']).values), len(bin_edges) - 1))
+
+    for trial_number in np.arange(int(np.max(assemblies['trials']))):
+        time_bins = assemblies["trials"] == trial_number
+        positions_this_trial = assemblies['lin_position'][time_bins]
+        filler = np.zeros_like(positions_this_trial)
+        running_this_trial = running[time_bins]
+        for n, neuron in enumerate(activations):
+            activation = neuron[time_bins] * running_this_trial
+            rasters[n, trial_number, :] = pc.spatial_bin(
+                positions_this_trial,
+                filler,
+                bins=bin_edges,
+                one_dim=True,
+                weights=activation)[0]
+    return rasters, bin_edges
