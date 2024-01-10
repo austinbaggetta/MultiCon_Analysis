@@ -543,3 +543,34 @@ def plot_spatial_footprints(A, unit_ids=None, threshold=0, base_color='gray', ma
         sub_max_bin = sub_max_bin.where(sub_max_bin.values == 1, np.nan)
         fig.add_trace(go.Heatmap(z=sub_max_bin, colorscale='Viridis', showscale=False, opacity=0.6, name='Spatial Footprints', showlegend=showlegend))
     return fig
+
+
+def plot_ensemble_raster(bin_edges, rasters, ensemble_id, normalized=True, reward_positions=None, **kwargs):
+    """
+    Plots the activation strength within a bin across trials. Used after the ica.make_ensemble_raster function.
+    Args:
+        bin_edges : numpy.ndarray
+        rasters : numpy.ndarray
+            output from ica.make_ensemble_raster function
+        ensemble_id : int
+            used to index rasters to plot your ensemble of interest
+        normalized : boolean
+            if True, will divide all values by the max activation value; by default True
+        reward_positions : list
+            list of reward position values
+        **kwargs
+            additional arguments for custom_graph_template
+    Returns:
+        fig : plotly.graph_object
+    """
+    fig = custom_graph_template(**kwargs)
+    if normalized:
+        plot_data = rasters[ensemble_id] / np.max(rasters[ensemble_id])
+    else:
+        plot_data = rasters[ensemble_id]
+    fig.add_trace(go.Heatmap(x=bin_edges, z=plot_data))
+
+    if reward_positions is not None:
+        fig.add_vline(x=reward_positions[0], line_width=1, line_color='darkgrey', opacity=1)
+        fig.add_vline(x=reward_positions[1], line_width=1, line_color='darkgrey', opacity=1)
+    return fig
