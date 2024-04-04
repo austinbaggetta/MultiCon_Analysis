@@ -336,7 +336,7 @@ def get_direction_information(location_data, lagn = 15):
             direction is correct if difference between angular positions is negative
     """
     ## Calculate difference between angular position rows
-    location_data.insert(3, 'a_offset', value = location_data.a_pos.diff(periods = lagn))
+    location_data.insert(3, 'a_offset', value = location_data.a_pos.diff(periods=lagn))
     ## Create conditions
     conditions = [
         (location_data.a_offset.lt(0)),
@@ -348,6 +348,21 @@ def get_direction_information(location_data, lagn = 15):
     ## Determine direction
     location_data['direction'] = np.select(conditions, choices)
     return location_data
+
+
+def get_correct_direction(a, **kwargs):
+    """
+    Used to get whether the mouse was running in the correct direction.
+    Args:
+        a : np.array
+            angular position data
+        kwargs 
+            additional arguments for np.diff
+    Returns:
+        boolean
+    """
+    offset =  np.diff(a, **kwargs)
+    return offset < 0
 
 
 def direction_percentage(location_data):
@@ -849,7 +864,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
 
 
 ### Adding new functions here - these functions definitely work on preprocessed behavior
-def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_reverse='all', **kwargs):
+def dprime_metrics(data, mouse, day, reward_ports, reward_index='one', forward_reverse='all', go_trials=2, nogo_trials=6, **kwargs):
     """
     Calculates hits, misses, false alarms, correct rejections, and dprime.
     Args:
@@ -872,9 +887,14 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
         nonreward_list = [x for x in np.arange(0, 8)]
     elif reward_index == 'one':
         nonreward_list = [x for x in np.arange(1, 9)]
-    nonreward_list.remove(reward_one)
-    nonreward_list.remove(reward_two)
-    signal = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
+    
+    for port in reward_ports:
+        nonreward_list.remove(port)
+    
+    if len(reward_ports) > 1:
+        reward_one, reward_two = reward_ports[0], reward_ports[1]
+
+    signal = {'mouse': [], 'day': [], 'trial': [], 'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
     if forward_reverse == 'forward':
         forward_trials, _ = get_forward_reverse_trials(data, **kwargs)
         trial_list = forward_trials
@@ -886,8 +906,6 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
     for trial in trial_list:
         trial_data = data.loc[(data['trials'] == trial) & (data['lick_port'] != -1)].reset_index(drop=True)
         nonreward_ports = {nonreward_list[0]: [], nonreward_list[1]: [], nonreward_list[2]: [], nonreward_list[3]: [], nonreward_list[4]: [], nonreward_list[5]: []}
-        go_trials = 2 ## two rewarding ports
-        nogo_trials = 6 ## 8 ports minus 2 rewarding ports
         ## Loop through all rows of trial data
         correct_licks = 0
         incorrect_licks = 0
@@ -927,6 +945,9 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
         hit_for_dprime = (correct_licks+0.5) / (go_trials+1)
         FA_for_dprime = (incorrect_licks+0.5) / (nogo_trials+1)
         ## Append to dict
+        signal['mouse'].append(mouse)
+        signal['day'].append(day)
+        signal['trial'].append(trial)
         signal['hits'].append(hit_rate)
         signal['miss'].append(miss_rate)
         signal['FA'].append(FA_rate)
@@ -935,17 +956,24 @@ def dprime_metrics(data, reward_one, reward_two, reward_index='one', forward_rev
     return signal
 
 
-def aggregate_metrics(signal, bin_size=5):
+def aggregate_metrics(metrics, bin_size=5, variable_of_interest='CR'):
     """
     Bins your hits, misses, FA, CR, and dprime according to bin_size.
     """
-    aggregated_data = {'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
-    for key in signal:
-        bins = np.arange(0, len(signal[key]), bin_size)
-        binned = np.split(signal[key], bins)
-        avg_value = [np.nanmean(bin) for bin in binned if bin.size > 0] ## if bin.size > 0 removes any empty array in binned
-        aggregated_data[key] = avg_value
-    return aggregated_data
+    binned_metrics = pd.DataFrame()
+    for mouse in np.unique(metrics['mouse']):
+        for day in np.unique(metrics['day']):
+            df = pd.DataFrame(columns=['mouse', 'group', 'day', 'binned_trial', variable_of_interest])
+            day_data = metrics[(metrics['mouse'] == mouse) & (metrics['day'] == day)].reset_index(drop=True)
+            binned_data = bin_data(day_data[variable_of_interest], bin_size=bin_size)
+            trial_nums = list(np.arange(1, len(binned_data)+1) * bin_size)
+            df['binned_trial'] = trial_nums
+            df[variable_of_interest] = binned_data
+            df['mouse'] = mouse
+            df['group'] = np.unique(day_data['group'])[0]
+            df['day'] = day
+            binned_metrics = pd.concat([binned_metrics, df], ignore_index=True)
+    return binned_metrics
 
 
 def bin_data(data, bin_size=2):
@@ -1010,7 +1038,7 @@ def probe_lick_accuracy(df, port_one, port_two):
     return percent_correct
 
 
-def lick_accuracy(df, port_one, port_two, by_trials=False):
+def lick_accuracy_legacy(df, port_one, port_two, by_trials=False):
     """
     Used to calculate the first lick percent correct.
     Args:
@@ -1051,6 +1079,82 @@ def lick_accuracy(df, port_one, port_two, by_trials=False):
         count_licks = licks_df.groupby('lick_port', as_index=False).agg(first_licks=('lick_port', 'count'))
         percent_correct = ((count_licks['first_licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
                             count_licks['first_licks'].dropna().sum()) * 100
+    return percent_correct
+
+
+def lick_accuracy(df, port_one, port_two, lick_threshold=1, by_trials=False):
+    """
+    Used to calculate the first lick percent correct.
+    Args:
+        df : pandas.DataFrame
+            preprocessed behavior containing columns for trials, lick_ports
+        port_one, port_two : int
+            which ports were rewarded (e.g. 5)
+        lick_threshold : int
+            which lick you want to look at in a bout of licks
+        by_trials : boolean
+            if True, will calculate percent correct within a trial. By default False.
+    Returns:
+        percent_correct : float or list
+            returns a single value when not calculated on a trial by trial basis
+    """
+    if by_trials:
+        percent_correct = []
+        for trial in np.unique(df['trials']):
+                count = 0
+                lick_port = np.nan
+                trial_behav = df[df['trials'] == trial]
+                licks = trial_behav[trial_behav['lick_port'] != -1].reset_index(drop=True)
+                if licks.empty:
+                    percent_correct.append(np.nan)
+                else:
+                    for idx, _ in licks.iterrows():
+                        if lick_port != licks.loc[idx, 'lick_port']:
+                            count = 1
+                        else:
+                            count += 1
+                        
+                        if count < lick_threshold - 1:
+                            licks.loc[idx, 'threshold_reached'] = False
+                        elif count == lick_threshold:
+                            licks.loc[idx, 'threshold_reached'] = True
+                        else:
+                            licks.loc[idx, 'threshold_reached'] = False
+
+                        lick_port =  licks.loc[idx, 'lick_port']
+
+                    count_licks = licks[['lick_port', 'threshold_reached']].groupby(['lick_port'], as_index=False).agg({'threshold_reached': 'sum'})
+                    if count_licks['threshold_reached'].dropna().sum() == 0:
+                        percent_correct.append(np.nan)
+                    else:
+                        percent_correct.append(((count_licks['threshold_reached'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
+                                                 count_licks['threshold_reached'].dropna().sum()) * 100)
+                
+    else:
+        count = 0
+        lick_port = np.nan         
+        licks = df[df['lick_port'] != -1].reset_index(drop=True)
+        if licks.empty:
+            percent_correct = np.nan 
+        else:
+            for idx, _ in licks.iterrows():
+                if lick_port != licks.loc[idx, 'lick_port']:
+                    count = 1
+                else:
+                    count += 1
+                
+                if count < lick_threshold - 1:
+                    licks.loc[idx, 'threshold_reached'] = False
+                elif count == lick_threshold:
+                    licks.loc[idx, 'threshold_reached'] = True
+                else:
+                    licks.loc[idx, 'threshold_reached'] = False
+
+                lick_port =  licks.loc[idx, 'lick_port']
+
+            count_licks = licks[['lick_port', 'threshold_reached']].groupby(['lick_port'], as_index=False).agg({'threshold_reached': 'sum'})
+            percent_correct = ((count_licks['threshold_reached'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
+                                count_licks['threshold_reached'].dropna().sum()) * 100
     return percent_correct
 
 
