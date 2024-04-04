@@ -3,7 +3,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-from os.path import join as pjoin
+from natsort import natsorted
 import os
 
 ## Import custom functions
@@ -84,7 +84,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale='Virid
     return fig
 
 
-def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_color='turquoise', chance_color='darkgrey', transition_color=['darkgrey'],
+def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color='turquoise', chance_color='darkgrey', transition_color=['darkgrey'],
                                marker_color='rgb(179,179,179)', plot_datapoints=True, expert_line=True, chance=True,
                                plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
@@ -110,41 +110,40 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var = ['day'], avg_col
     ## Create figure
     fig = custom_graph_template(**kwargs)
     ## Colors for each group
-    if 'group' in groupby_var:
-        groups = np.unique(data['group'])
+    if ('group' in groupby_var) | ('group_two' in groupby_var):
+        groups = np.unique(data[groupby_var[-1]])
         group_dict = {g:c for (g,c) in zip(groups, marker_color)}
         
     if plot_datapoints:
         ## Plot individual subjects
         for subject in np.unique(data['mouse']):
             data_sub = data.loc[data['mouse'] == subject].reset_index()
-            if 'group' in groupby_var:
-                subject_color = group_dict[data_sub.loc[0, 'group']]
+            if ('group' in groupby_var) | ('group_two' in groupby_var):
+                subject_color = group_dict[data_sub.loc[0, groupby_var[-1]]]
             else:
                 subject_color = marker_color
-            fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var],
-                                    mode='lines', opacity=0.8, name=subject, line_color=subject_color, line_width=1))
+            fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var], showlegend=False, 
+                                    mode='lines', opacity=0.7, name=subject, line_color=subject_color, line_width=1))
                                     #marker = dict(color=subject_color, line=dict(width = 1))))
     ## Plot group average or multiple group averages
-    if 'group' in groupby_var:
-        for group in np.unique(avg_data['group']):
-            avg_sub = avg_data.loc[avg_data['group'] == group]
-            sem_sub = sem_data.loc[sem_data['group'] == group]
+    if ('group' in groupby_var) | ('group_two' in groupby_var):
+        for group in np.unique(avg_data[groupby_var[-1]]):
+            avg_sub = avg_data.loc[avg_data[groupby_var[-1]] == group]
+            sem_sub = sem_data.loc[sem_data[groupby_var[-1]] == group]
             fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
-                                     mode='lines+markers',
+                                     mode='lines+markers', 
                                      error_y = dict(type='data', array=sem_sub[y_var]),
                                      line = dict(color=group_dict[group]), name=group, showlegend=True))
     else:
         fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
-                                mode='lines+markers',
+                                mode='lines+markers', 
                                 error_y=dict(type='data', array=sem_data[y_var]),
-                                line=dict(color=avg_color)))
+                                line=dict(color=avg_color), showlegend=False))
     ## Add dashed lines   
     if expert_line:
         fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)
     if chance:
         fig.add_hline(y=25, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)
-    fig.update_layout(showlegend = False)
     ## Plot transitions
     if plot_transitions is not None:
         for idx, value in enumerate(plot_transitions):
@@ -573,4 +572,47 @@ def plot_ensemble_raster(bin_edges, rasters, ensemble_id, normalized=True, rewar
     if reward_positions is not None:
         fig.add_vline(x=reward_positions[0], line_width=1, line_color='darkgrey', opacity=1)
         fig.add_vline(x=reward_positions[1], line_width=1, line_color='darkgrey', opacity=1)
+    return fig
+
+
+def create_polar_plots(fig_data, bar_color, data_col='r', error_col=None, **kwargs):
+    fig = custom_graph_template(**kwargs)
+
+    for idx, session in enumerate(natsorted(np.unique(fig_data['session']))):
+            fig.add_trace(go.Barpolar(
+                r=fig_data[data_col]['mean'][fig_data['session'] == session],
+                theta=fig_data['rotation'][fig_data['session'] == session],
+                marker_color=bar_color,
+                marker_line_color='black',
+                marker_line_width=1,
+                opacity=0.8,
+                showlegend=False
+            ), row=1, col=idx + 1)
+            if error_col is not None:
+                fig.add_trace(go.Barpolar(
+                        r=fig_data[data_col]['mean'][fig_data['session'] == session] + fig_data['r'][error_col][fig_data['session'] == session],
+                        theta=fig_data['rotation'][fig_data['session'] == session],
+                        marker_color=bar_color,
+                        marker_line_color='black',
+                        marker_line_width=0,
+                        opacity=0.3,
+                        showlegend=False,
+                        name='upper'
+                ), row=1, col=idx + 1)
+                fig.add_trace(go.Barpolar(
+                        r=fig_data[data_col]['mean'][fig_data['session'] == session] - fig_data['r'][error_col][fig_data['session'] == session],
+                        theta=fig_data['rotation'][fig_data['session'] == session],
+                        marker_color=bar_color,
+                        marker_line_color='black',
+                        marker_line_width=0,
+                        opacity=0.3,
+                        showlegend=False,
+                        name='lower'
+                ), row=1, col=idx + 1)
+        
+    fig.update_polars(
+            radialaxis = dict(showticklabels=False, ticks='', angle=180, tickangle=-180, range=[-0.2, 1], showgrid=True, gridcolor='darkgrey', dtick=0.2),
+            angularaxis = dict(showticklabels=True, ticks='', showgrid=True, gridcolor='darkgrey'),
+            barmode='overlay'
+        )
     return fig
