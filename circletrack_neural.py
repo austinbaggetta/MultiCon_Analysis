@@ -16,6 +16,7 @@ import xarray as xr
 from numpy.polynomial.polynomial import polyfit
 from plotly.subplots import make_subplots
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
+from skimage.filters import threshold_otsu
 from scipy.stats import pearsonr, zscore, spearmanr
 from scipy.ndimage import convolve
 import itertools
@@ -483,4 +484,21 @@ def align_calcium_behavior(act, behav, col_name='unix'):
         timestamps_behav = np.array(behav.loc[:, col_name]) / 1000 ## convert to seconds
     aligned_indices = np.abs(timestamps_calc - timestamps_behav).argmin(axis=1)
     return act_shifted, behav.loc[aligned_indices, :].reset_index(drop=True)
+
+
+def calculate_otsu_thresh(spike_data):
+    """
+    Calculate the otsu threshold for the spike amplitude histogram.
+    Used to binarize approximated spike data (since S has some noise)
+    Args:
+        spike_data : xarray.DataArray or numpy.ndarray
+            output from Minian or aligned calcium and behavior data
+    Returns:
+        T : float
+            otsu threshold to minimize intra-class variance.
+    """
+    counts, bins = np.histogram(spike_data)
+    center = (bins[:-1] + bins[1:]) / 2
+    hist = (counts, center)
+    return threshold_otsu(hist=hist)
 
