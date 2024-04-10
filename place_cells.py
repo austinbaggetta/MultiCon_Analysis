@@ -477,36 +477,36 @@ class PlaceFields:
         return np.asarray(pvals), np.asarray(SI_z)
     
 
-    # def plot_dots(
-    #     self, neuron, std_thresh=2, pos_color="k", transient_color="r", ax=None
-    # ):
-    #     """
-    #     Plots a dot show_plot. Position samples with suprathreshold activity
-    #     dots overlaid.
-    #     :parameters
-    #     ---
-    #     neuron: int, neuron index in neural_data.
-    #     std_thresh: float, number of standard deviations above the mean
-    #         to show_plot "spike" dot.
-    #     pos_color: color-like, color to make position samples.
-    #     transient_color: color-like, color to make calcium transient-associated
-    #         position samples.
-    #     """
-    #     # Define threshold.
-    #     thresh = np.mean(self.data["neural"][neuron]) + std_thresh * np.std(
-    #         self.data["neural"][neuron]
-    #     )
-    #     supra_thresh = self.data["neural"][neuron] > thresh
+    def plot_dots(
+        self, neuron, std_thresh=2, pos_color="k", transient_color="r", ax=None
+    ):
+        """
+        Plots a dot show_plot. Position samples with suprathreshold activity
+        dots overlaid.
+        :parameters
+        ---
+        neuron: int, neuron index in neural_data.
+        std_thresh: float, number of standard deviations above the mean
+            to show_plot "spike" dot.
+        pos_color: color-like, color to make position samples.
+        transient_color: color-like, color to make calcium transient-associated
+            position samples.
+        """
+        # Define threshold.
+        thresh = np.mean(self.data["neural"][neuron]) + std_thresh * np.std(
+            self.data["neural"][neuron]
+        )
+        supra_thresh = self.data["neural"][neuron] > thresh
 
-    #     # Plot.
-    #     if ax is None:
-    #         fig, ax = plt.subplots()
+        # Plot.
+        if ax is None:
+            fig, ax = plt.subplots()
 
-    #     ax.scatter(self.data["x"], self.data["y"], s=3, c=pos_color)
-    #     ax.scatter(
-    #         self.data["x"][supra_thresh],
-    #         self.data["y"][supra_thresh],
-    #         s=3,
-    #         c=transient_color,
-    #     )
+        ax.scatter(self.data["x"], self.data["y"], s=3, c=pos_color)
+        ax.scatter(
+            self.data["x"][supra_thresh],
+            self.data["y"][supra_thresh],
+            s=3,
+            c=transient_color,
+        )
 
