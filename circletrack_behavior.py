@@ -1454,6 +1454,37 @@ def port_lick_chisquared(behav, num_ports=8, probe=True):
     return expected, observed, stats
 
 
+def convert_to_cm(behav=None, x=None, y=None, pixels_per_cm=5.5380577427821525, update_dataframe=False):
+    """
+    Takes the x and y values in pixels from the preprocessed behavior data and converts them to centimeters.
+    Pixels_per_cm was determined from a video recording of a hand being tracked along the edge of the maze.
+    Args:
+        behav : pandas.DataFrame
+            output from 02_process_circletrack; by default None
+        x, y : array
+            x and y position in pixels from processed output
+        pixels_per_cm : float
+            code to get this value is in CellOverlap.ipynb in MultiCon_Imaging2
+        update_dataframe = bool
+            whether or not you insert the values as columns into behav
+    """
+    if x is None and y is None:
+        x_cm = behav['x'] / pixels_per_cm
+        y_cm = behav['y'] / pixels_per_cm
+    elif behav is None:
+        x_cm = np.array(x) / pixels_per_cm 
+        y_cm = np.array(y) / pixels_per_cm
+    else:
+        raise Exception('All three arguments cannot be none!')
+    
+    if update_dataframe:
+        behav.insert(0, 'x_cm', x_cm)
+        behav.insert(1, 'y_cm', y_cm)
+        return behav
+    else:
+        return x_cm, y_cm
+
+
 
 
 
