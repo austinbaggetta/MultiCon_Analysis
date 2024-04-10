@@ -482,11 +482,11 @@ def visualize_individual_cell(spike_data, calcium_data, cell_number, downsample_
         fig.add_trace(go.Scatter(x=spike_data['behav_t'].values, y=(cell_spike_data.values[0] > spiking_threshold).astype(int), 
                                  mode='lines', line_color='red', showlegend=False), row=1, col=2)
         fig.add_trace(go.Scatter(x=spike_data['x'].values[cell_spike_data.values[0] > spiking_threshold], y=spike_data['y'].values[cell_spike_data.values[0] > spiking_threshold], 
-                        mode='markers', marker_color='red', showlegend=False), row=1, col=1)
+                        mode='markers', marker_color='red', showlegend=False, opacity=0.4), row=1, col=1)
     else:
         fig.add_trace(go.Scatter(x=spike_data['behav_t'].values, y=cell_spike_data.values[0], mode='lines', line_color='red', showlegend=False), row=1, col=2)
         fig.add_trace(go.Scatter(x=spike_data['x'].values[cell_spike_data.values[0] > 0], y=spike_data['y'].values[cell_spike_data.values[0] > 0], 
-                        mode='markers', marker_color='red', showlegend=False), row=1, col=1)
+                        mode='markers', marker_color='red', showlegend=False, opacity=0.4), row=1, col=1)
     fig.update_yaxes(title='Y', row=1, col=1)
     fig.update_yaxes(title='Amplitude (a.u.)', row=1, col=2)
     fig.update_xaxes(title='X', row=1, col=1)
