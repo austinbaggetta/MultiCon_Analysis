@@ -1153,8 +1153,11 @@ def lick_accuracy(df, port_one, port_two, lick_threshold=1, by_trials=False):
                 lick_port =  licks.loc[idx, 'lick_port']
 
             count_licks = licks[['lick_port', 'threshold_reached']].groupby(['lick_port'], as_index=False).agg({'threshold_reached': 'sum'})
-            percent_correct = ((count_licks['threshold_reached'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
-                                count_licks['threshold_reached'].dropna().sum()) * 100
+            if count_licks['threshold_reached'].dropna().sum() == 0:
+                percent_correct = np.nan 
+            else:
+                percent_correct = ((count_licks['threshold_reached'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
+                                    count_licks['threshold_reached'].dropna().sum()) * 100
     return percent_correct
 
 
@@ -1483,6 +1486,23 @@ def convert_to_cm(behav=None, x=None, y=None, pixels_per_cm=5.5380577427821525, 
         return behav
     else:
         return x_cm, y_cm
+    
+
+def calculate_reward_positions(dar, reward_attrs=['reward_one', 'reward_two']):
+    """
+    Used to get the x and y position of your reward ports.
+    Args:
+        dar : xarray.DataArray
+            preprocessed output containing lick_port as a coordinate and reward ports as attributes
+        reward_attrs : list
+            list of attribute names for reward ports; by default reward_one, reward_two (since two reward ports)
+    """
+    reward_positions = []
+    for port in reward_attrs:
+        reward_x = dar['x'][dar['lick_port'] == dar.attrs[port]].mean().values
+        reward_y = dar['y'][dar['lick_port'] == dar.attrs[port]].mean().values
+        reward_positions.append((reward_x, reward_y))
+    return reward_positions
 
 
 
