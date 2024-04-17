@@ -125,3 +125,64 @@ def between_context_overlap(mouse, overlap, session_ids = ['A5', 'B5', 'C5', 'D5
         CtoD.insert(3, 'context', 'c_d_ra')
         output = pd.concat([AtoB, BtoC, CtoD], ignore_index = True)
         return output
+    
+
+def average_overlap_within_contexts(matrix, num_days=[0, 5, 10, 15, 20]):
+    """
+    Calculate the average cell overlap (percentage) within a context.
+    Args:
+        matrix : pandas.DataFrame
+            The matrix from the cell overlap heatmap. It's created by taking the overlap dataframe from
+            calculate_overlap and doing overlap.pivot_table(index='session_id1', columns='session_id2', values='overlap')
+        num_days : list
+            List of values where each value is the last day within a context. Zero must be the first value of the list.
+    Returns:
+        avg_overlap : pandas.DataFrame
+            dataframe with columns days (tuple of start and end day), mean (average cell overlap), and sem
+    """
+    avg_overlap = {'days': [], 'avg': [], 'std_err': []}
+    for idx in np.arange(0, len(num_days)-1):
+        if idx == 0:
+            data = matrix.loc[num_days[idx]:num_days[idx+1], num_days[idx]:num_days[idx+1]].to_numpy()
+        else:
+            data = matrix.loc[num_days[idx]+1:num_days[idx+1], num_days[idx]+1:num_days[idx+1]].to_numpy()
+
+        mask = np.zeros(data.shape)
+        for n in np.arange(1, data.shape[1]):
+            np.fill_diagonal(mask[:, n:], 1)
+        if idx == 0:
+            avg_overlap['days'].append((num_days[idx], num_days[idx+1]))
+        else:
+            avg_overlap['days'].append((num_days[idx]+1, num_days[idx+1]))    
+        avg_overlap['avg'].append(np.mean(data[mask>0]))
+        avg_overlap['std_err'].append(np.std(data[mask>0], ddof=1) / np.sqrt(np.sum(mask>0)))
+    return pd.DataFrame(avg_overlap)
+
+
+def average_overlap_across_contexts(matrix, start_tuple=(0, 5), end_tuple=(6, 10)):
+    """ 
+    Calculates the average cell overlap across contexts.
+    Args:
+        matrix : pandas.DataFrame
+            The matrix from the cell overlap heatmap. It's created by taking the overlap dataframe from
+            calculate_overlap and doing overlap.pivot_table(index='session_id1', columns='session_id2', values='overlap')
+        start_tuple, end_tuple : tuple
+            values of days where you want to index between
+    Returns:
+        avg_overlap : pandas.DataFrame
+            dataframe with columns start, end (tuple of start and end days), mean (average cell overlap), and sem
+    """
+    avg_overlap = {'start': [], 'end': [], 'avg': [], 'std_err': []}
+    data = matrix.loc[start_tuple[0]:start_tuple[1], end_tuple[0]:end_tuple[1]].to_numpy()
+    avg_overlap['start'].append(start_tuple)
+    avg_overlap['end'].append(end_tuple)
+    if start_tuple == end_tuple:
+        mask = np.zeros(data.shape)
+        for n in np.arange(1, data.shape[1]):
+            np.fill_diagonal(mask[:, n:], 1)
+        avg_overlap['avg'].append(np.mean(data[mask>0]))
+        avg_overlap['std_err'].append(np.std(data[mask>0], ddof=1) / np.sqrt(np.sum(mask>0)))
+    else:
+        avg_overlap['avg'].append(np.mean(data))
+        avg_overlap['std_err'].append(np.std(data, ddof=1) / np.sqrt(np.sum(data>0)))
+    return pd.DataFrame(avg_overlap)
