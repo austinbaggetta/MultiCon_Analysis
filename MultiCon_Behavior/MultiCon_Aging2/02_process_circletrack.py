@@ -53,7 +53,7 @@ for mouse in mouse_list:
     subset = sorted(subset, key=natsort_key)
     subset_log = sorted(subset_log, key=natsort_key)
     for i, session in tqdm(enumerate(todays_mazes.columns[1:]), leave=False): ## start from index 1 since index 0 is mouseID
-        if i < 27:
+        if i < 29:
             pass 
         else:
             try:
