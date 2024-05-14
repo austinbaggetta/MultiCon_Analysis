@@ -53,15 +53,17 @@ for mouse in mouse_list:
     subset = sorted(subset, key=natsort_key)
     subset_log = sorted(subset_log, key=natsort_key)
     for i, session in tqdm(enumerate(todays_mazes.columns[1:]), leave=False): ## start from index 1 since index 0 is mouseID
-        if i < 29:
+        if i < 0:
             pass 
         else:
             try:
                 if todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0] == 'DONE':
-                    pass 
+                    pass
                 else:
                     print(session)
                     print(todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0])
+                    if (todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0] == 'CT') | (todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0] == 'DT'):
+                        i = len(subset) - 1
                     circle_track = pd.read_csv(subset[i])
                     reward_one, reward_two = ctb.get_rewarding_ports(circle_track, processed=False)
                     rewards = [reward_one, reward_two]
