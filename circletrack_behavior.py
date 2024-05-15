@@ -1505,6 +1505,44 @@ def calculate_reward_positions(dar, reward_attrs=['reward_one', 'reward_two']):
     return reward_positions
 
 
+def front_back_ports(reward_list, zero_start=False, nports=8):
+    """
+    For a reward port, gets the port directly before and directly after it.
+    Args:
+        reward_list : list
+            list of reward port values as integers, e.g. [1, 5]
+        zero_start : boolean
+            whether the first reward port is reward1 or reward0; by default False (reward1)
+        nports : int
+            number of reward ports; by default 8
+    Returns:
+        front_ports, back_ports : lists
+            list of the reward ports directly before the reward ports in reward list
+            list of the reward ports directly after the reward ports in reward list
+    """
+    front_ports = []
+    back_ports = []
+    if zero_start:
+        ports = np.arange(0, nports)
+    else:
+        ports = np.arange(1, nports + 1)
+
+    for port_value in ports:
+        if port_value in reward_list:
+            port_list = ports
+            if (port_value == port_list[0]):
+                port_list = np.roll(port_list, shift=1)
+                front_ports.append(port_list[port_value - 1])
+                back_ports.append(port_list[port_value + 1])
+            elif (port_value == port_list[-1]):
+                port_list = np.roll(port_list, shift=-1)
+                front_ports.append(port_list[port_value - 3])
+                back_ports.append(port_list[port_value - 1])
+            else:
+                port_list = np.roll(port_list, shift=0)
+                front_ports.append(port_list[port_value - 2])
+                back_ports.append(port_list[port_value])
+    return front_ports, back_ports
 
 
 
