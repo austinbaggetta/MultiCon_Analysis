@@ -1545,4 +1545,27 @@ def front_back_ports(reward_list, zero_start=False, nports=8):
     return front_ports, back_ports
 
 
+def label_lick_bout(df):
+    """
+    Used to label each bout of licking.
+    Args:
+        df : pandas.DataFrame
+            preprocessed circletrack or lineartrack behavior
+    Returns:
+        licks : pandas.DataFrame
+            dataframe with lick_bout as an additional column
+    """
+    licks = df[df['lick_port'] != -1].reset_index(drop=True)
+    current_port = licks.loc[0, 'lick_port']
+    current_bout = 1
+    for idx, row in licks.iterrows():
+        if row['lick_port'] == current_port:
+            licks.loc[idx, 'lick_bout'] = current_bout
+        else:
+            current_bout += 1
+            current_port = row['lick_port']
+            licks.loc[idx, 'lick_bout'] = current_bout
+    return licks
+
+
 
