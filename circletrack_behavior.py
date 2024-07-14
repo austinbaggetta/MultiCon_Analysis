@@ -1568,4 +1568,12 @@ def label_lick_bout(df):
     return licks
 
 
+def calculate_bins(x, bin_size=0.4):
+    """
+    Used to calculate bins of a given variable based on bin size.
+    """
+    min_x, max_x = np.min(x), np.max(x)
+    bins = np.arange(min_x, max_x, bin_size)
+    return bins
+
 
