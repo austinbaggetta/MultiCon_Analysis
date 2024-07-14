@@ -73,6 +73,7 @@ for mouse in mouse_list:
                         pass
                 circle_track = ctb.crop_data(circle_track)
                 unix_start =  pd.to_numeric(circle_track.loc[circle_track['event'] == 'START', 'timestamp'].values[0])
+                print(unix_start)
                 circle_track["frame"] = np.arange(len(circle_track))
                 data_out = circle_track[circle_track["event"] == "LOCATION"].copy().reset_index(drop=True)
                 data_out['timestamp'] = pd.to_numeric(data_out['timestamp']) ## sometimes saved as string, not sure why
