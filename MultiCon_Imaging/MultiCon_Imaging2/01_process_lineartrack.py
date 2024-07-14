@@ -14,14 +14,14 @@ import circletrack_behavior as ctb
 
 # %%
 ## Set parameters
-parent_dir = 'MultiCon_Behavior'
-experiment_dir = 'MultiCon_Aging2'
+parent_dir = 'MultiCon_Imaging'
+experiment_dir = 'MultiCon_Imaging2'
 behavior_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/lineartrack_data/")
 output_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/output/lin_behav")
-cohort_number = 'mc_ag2'
-mouse_list = [f'mca{x}' for x in np.arange(24, 48)]
+cohort_number = 'mci2'
+mouse_list = ['mc23', 'mc26']
 num_days = 5 ## how many days of linear track
-str2match = "(mca[0-9]+)"
+str2match = "(mc[0-9]+)"
 downsample = False
 if downsample:
     sampling_rate = 1/30 ## started keeping minian output at 1/30
