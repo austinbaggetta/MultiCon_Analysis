@@ -113,13 +113,11 @@ def get_rewarding_ports(data, processed=False):
         return reward_first, reward_second
     else:
         if any(data.event == 'initializing'):
-            reward_ports = data.loc[data.event == 'initializing'].reset_index(drop = True)
-            reward_first = reward_ports.data[0]
-            reward_second = reward_ports.data[1]
-            return reward_first, reward_second
+            reward_ports = data.loc[data.event == 'initializing'].reset_index(drop=True)
+            return reward_ports
         else:
-            all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop = True)
-            reward_ports = pd.DataFrame(all_rewards.unique(), columns = ['data'])
+            all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop=True)
+            reward_ports = pd.DataFrame(all_rewards.unique(), columns=['data'])
             if reward_ports.empty:
                 reward_first = None
                 reward_second = None
