@@ -502,3 +502,14 @@ def calculate_otsu_thresh(spike_data):
     hist = (counts, center)
     return threshold_otsu(hist=hist)
 
+
+def extract_windowed_data(data, window_val, window_size, col_name=None):
+    """
+    Used to extract the data around a point of interest.
+    """
+    if col_name is not None:
+        d = data[(data[col_name] >= window_val[col_name] - window_size) & (data[col_name] <= window_val[col_name] + window_size)]
+    else:
+        d = data[(data >= window_val - window_size) & (data <= window_val + window_size)]
+    return d
+
