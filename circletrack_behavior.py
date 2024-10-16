@@ -128,21 +128,6 @@ def get_rewarding_ports(data, processed=False):
                 reward_first = reward_ports.iloc[0, 0]
                 reward_second = reward_ports.iloc[1, 0]
             return reward_first, reward_second
-
-
-def get_licks(data):
-    """
-    Get lick data within a session
-    Args:
-        data : pandas.DataFrame
-            circle_track.csv data with three columns
-    Returns:
-        lick_tmp : pandas.DataFrame
-            dataframe with lick events
-    """
-    ## Get licks
-    lick_tmp = data.loc[(data.event == 'LICK') | (data.event == 'REWARD')].replace(to_replace='REWARD', value='LICK').reset_index(drop = True)
-    return lick_tmp
     
     
 def normalize_timestamp(data):
@@ -220,7 +205,7 @@ def set_track_and_maze(track, maze_number):
     return ports
 
 
-def linearize_trajectory(df, angle_type, shift_factor, inner_d = 25, outer_d = 30, unit = 'cm'):
+def linearize_trajectory(df, angle_type, shift_factor, inner_d=25, outer_d=30, unit='cm'):
     """
     Linearizes circular position into physical length units.
     Args:
@@ -262,7 +247,7 @@ def linearize_trajectory(df, angle_type, shift_factor, inner_d = 25, outer_d = 3
         return result
 
 
-def bin_linearized_position(linearized_trajectory, angle_type = 'radians', bin_num = 8):
+def bin_linearized_position(linearized_trajectory, angle_type='radians', bin_num=8):
     """
     Create a certain number of bins, then determine which bin the data from linearized_trajectory is in.
     Args:
@@ -327,7 +312,7 @@ def get_trials(df, shift_factor, angle_type = 'radians', counterclockwise = True
     return trials
 
 
-def forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2):
+def forward_reverse_trials(aligned_behavior, trials, positive_jump=350, wiggle=2):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
     Args:
@@ -453,7 +438,6 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-### Adding new functions here - these functions definitely work on preprocessed behavior
 def dprime_metrics(data, mouse, day, reward_ports, reward_index='one', forward_reverse='all', go_trials=2, nogo_trials=6, **kwargs):
     """
     Calculates hits, misses, false alarms, correct rejections, and dprime.
@@ -471,7 +455,6 @@ def dprime_metrics(data, mouse, day, reward_ports, reward_index='one', forward_r
         signal : dictionary
             dictionary with keys hits, miss, FA, CR, dprime   
     """
-    # data['lick_port'] = data['lick_port'].astype(str)
     ## Create nonreward list
     if reward_index == 'zero':
         nonreward_list = [x for x in np.arange(0, 8)]
@@ -580,25 +563,6 @@ def bin_data(data, bin_size=2):
     return [np.nanmean(bin) for bin in binned if bin.size > 0]
 
 
-def trial_averages(mouse_trial_times, session_list, forward = False):
-    """
-    Calculate the average trial time for a session across mice.
-    """
-    if not forward:
-        trial_times_df = pd.DataFrame(mouse_trial_times).T
-        avg_times = {}
-        for session in session_list:
-            times = trial_times_df[session].apply(pd.Series)
-            avg_times[session] = np.nanmean(times, axis = 0)
-    else:
-        trial_times_df = pd.DataFrame(mouse_trial_times).T
-        avg_times = {}
-        for session in session_list:
-            times = trial_times_df[session].apply(pd.Series)
-            avg_times[session] = np.nanmean(times, axis = 0)
-    return avg_times
-
-
 def calculate_trial_times(aligned_behavior, forward_trials):
     trial_length_dict = {'trial': [], 'trial_length': []}
     for trial in forward_trials:
@@ -610,7 +574,7 @@ def calculate_trial_times(aligned_behavior, forward_trials):
     return trial_length_dict
 
 
-def lick_accuracy(df, port_list, lick_threshold=1, by_trials=False):
+def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
     """
     Used to calculate the first lick percent correct.
     Args:
@@ -723,37 +687,6 @@ def performance_drop(accuracy, day_list, replace=False):
     if replace:
         performance.loc[performance['drop'] < 0, 'drop'] = 0
     return performance
-
-
-def get_forward_reverse_trials(aligned_behavior, positive_jump = 350, wiggle = 2):
-    """
-    After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
-    Args:
-        aligned_behavior : pandas.DataFrame
-            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
-            contains x_pos, y_pos, and a_pos (angular position in degrees)
-        positive_jump : int
-            The linearized position has a large jump when the angular position resets, so we want our difference 
-            in angular position to be less than this positive jump
-        wiggle : int
-            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
-            incorrect direction due to noise. We want our difference between successive angular positions to
-            be greater than this noise.
-    Returns:
-        forward_trials, backward_trials : list
-            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
-    """
-    forward_trials = []
-    backward_trials = []
-    for trial in np.unique(aligned_behavior['trials']):
-        ## Take the difference between each angular position within a given trial to determine direction
-        diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
-        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
-        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
-            forward_trials.append(trial)
-        else:
-            backward_trials.append(trial)
-    return forward_trials, backward_trials
 
 
 def fix_lick_ports(behav, reward_one, reward_two):
