@@ -438,6 +438,37 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
+def get_forward_reverse_trials(aligned_behavior, positive_jump=350, wiggle=2):
+    """
+    After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
+    Args:
+        aligned_behavior : pandas.DataFrame
+            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
+            contains x_pos, y_pos, and a_pos (angular position in degrees)
+        positive_jump : int
+            The linearized position has a large jump when the angular position resets, so we want our difference 
+            in angular position to be less than this positive jump
+        wiggle : int
+            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
+            incorrect direction due to noise. We want our difference between successive angular positions to
+            be greater than this noise.
+    Returns:
+        forward_trials, backward_trials : list
+            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
+    """
+    forward_trials = []
+    backward_trials = []
+    for trial in np.unique(aligned_behavior['trials']):
+        ## Take the difference between each angular position within a given trial to determine direction
+        diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
+        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
+        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
+            forward_trials.append(trial)
+        else:
+            backward_trials.append(trial)
+    return forward_trials, backward_trials
+
+
 def dprime_metrics(data, mouse, day, reward_ports, reward_index='one', forward_reverse='all', go_trials=2, nogo_trials=6, **kwargs):
     """
     Calculates hits, misses, false alarms, correct rejections, and dprime.
@@ -1041,7 +1072,7 @@ def calculate_bins(x, bin_size=0.4):
     Used to calculate bins of a given variable based on bin size.
     """
     min_x, max_x = np.min(x), np.max(x)
-    bins = np.arange(min_x, max_x, bin_size)
+    bins = np.arange(min_x, max_x + bin_size, bin_size)
     return bins
 
 
