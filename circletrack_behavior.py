@@ -1006,6 +1006,7 @@ def trial_averages(mouse_trial_times, session_list, forward = False):
             avg_times[session] = np.nanmean(times, axis = 0)
     return avg_times
 
+
 def calculate_trial_times(aligned_behavior, forward_trials):
     trial_length_dict = {'trial': [], 'trial_length': []}
     for trial in forward_trials:
@@ -1017,70 +1018,7 @@ def calculate_trial_times(aligned_behavior, forward_trials):
     return trial_length_dict
 
 
-def probe_lick_accuracy(df, port_one, port_two):
-    """
-    Used to calculate percent correct during the probe. Doesn't count only first licks, counts all licks.
-    Args:
-        df : pandas.DataFrame
-            preprocessed behavior output stored as feather file
-        port_one, port_two : str
-            name of rewarding ports
-    Returns:
-        percent_correct : float
-            lick accuracy for that session
-    """
-    licks = df[df['lick_port'] != -1].reset_index(drop=True)
-    count_licks = licks.groupby('lick_port', as_index=False).agg(licks=('lick_port', 'count'))
-    percent_correct = ((count_licks['licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
-                        count_licks['licks'].dropna().sum()) * 100
-    return percent_correct
-
-
-def lick_accuracy_legacy(df, port_one, port_two, by_trials=False):
-    """
-    Used to calculate the first lick percent correct.
-    Args:
-        df : pandas.DataFrame
-            preprocessed behavior containing columns for trials, lick_ports
-        port_one, port_two : int
-            which ports were rewarded (e.g. 5)
-        by_trials : boolean
-            if True, will calculate the first lick percent correct within a trial. By default False.
-    Returns:
-        percent_correct : float or list
-            returns a single value when not calculated on a trial by trial basis
-    """
-    if by_trials:
-        percent_correct = []
-        for trial in np.unique(df['trials']):
-                trial_behav = df[df['trials'] == trial]
-                licks = trial_behav[trial_behav['lick_port'] != -1].reset_index(drop=True)
-                licks.insert(loc=6, 
-                            column='shifted', 
-                            value=licks['lick_port'].shift(periods=1, fill_value='first'))
-                licks.insert(loc=7, 
-                            column='first', 
-                            value=licks['lick_port'] != licks['shifted'])
-                licks_df = licks[licks['first']].reset_index(drop=True)
-                count_licks = licks_df.groupby('lick_port', as_index=False).agg(first_licks=('lick_port', 'count'))
-                percent_correct.append(((count_licks['first_licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
-                                        count_licks['first_licks'].dropna().sum()) * 100)
-    else:
-        licks = df[df['lick_port'] != -1].reset_index(drop=True)
-        licks.insert(loc=6, 
-                    column='shifted', 
-                    value=licks['lick_port'].shift(periods=1, fill_value='first'))
-        licks.insert(loc=7, 
-                    column='first', 
-                    value=licks['lick_port'] != licks['shifted'])
-        licks_df = licks[licks['first']].reset_index(drop=True)
-        count_licks = licks_df.groupby('lick_port', as_index=False).agg(first_licks=('lick_port', 'count'))
-        percent_correct = ((count_licks['first_licks'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
-                            count_licks['first_licks'].dropna().sum()) * 100
-    return percent_correct
-
-
-def lick_accuracy(df, port_one, port_two, lick_threshold=1, by_trials=False):
+def lick_accuracy(df, port_list, lick_threshold=1, by_trials=False):
     """
     Used to calculate the first lick percent correct.
     Args:
@@ -1125,8 +1063,13 @@ def lick_accuracy(df, port_one, port_two, lick_threshold=1, by_trials=False):
                     if count_licks['threshold_reached'].dropna().sum() == 0:
                         percent_correct.append(np.nan)
                     else:
-                        percent_correct.append(((count_licks['threshold_reached'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
-                                                 count_licks['threshold_reached'].dropna().sum()) * 100)
+                        reward_licks = 0
+                        for reward_port in port_list:
+                            try:
+                                reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]])
+                            except:
+                                pass
+                        percent_correct.append(reward_licks / count_licks['threshold_reached'].dropna().sum() * 100)
                 
     else:
         count = 0
@@ -1154,8 +1097,10 @@ def lick_accuracy(df, port_one, port_two, lick_threshold=1, by_trials=False):
             if count_licks['threshold_reached'].dropna().sum() == 0:
                 percent_correct = np.nan 
             else:
-                percent_correct = ((count_licks['threshold_reached'][(count_licks['lick_port'] == port_one) | (count_licks['lick_port'] == port_two)].dropna().sum()) / 
-                                    count_licks['threshold_reached'].dropna().sum()) * 100
+                reward_licks = 0
+                for reward_port in port_list:
+                    reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]]) 
+                percent_correct = reward_licks / count_licks['threshold_reached'].dropna().sum() * 100
     return percent_correct
 
 
