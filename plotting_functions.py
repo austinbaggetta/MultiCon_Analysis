@@ -104,13 +104,13 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
             figure     
     """
     ## Calculate mean for each day
-    avg_data = data.groupby(groupby_var, as_index=False).mean(numeric_only=True)
+    avg_data = data.groupby(groupby_var, as_index=False).agg({y_var: 'mean'})
     ## Calculate SEM for each day
-    sem_data = data.groupby(groupby_var, as_index=False).sem()
+    sem_data = data.groupby(groupby_var, as_index=False).agg({y_var: 'sem'})
     ## Create figure
     fig = custom_graph_template(**kwargs)
     ## Colors for each group
-    if ('group' in groupby_var) | ('group_two' in groupby_var):
+    if ('group' in groupby_var) | ('group_two' in groupby_var) | ('group_three' in groupby_var):
         groups = np.unique(data[groupby_var[-1]])
         group_dict = {g:c for (g,c) in zip(groups, marker_color)}
         
@@ -118,21 +118,23 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
         ## Plot individual subjects
         for subject in np.unique(data['mouse']):
             data_sub = data.loc[data['mouse'] == subject].reset_index()
-            if ('group' in groupby_var) | ('group_two' in groupby_var):
+            if ('group' in groupby_var) | ('group_two' in groupby_var) | ('group_three' in groupby_var):
                 subject_color = group_dict[data_sub.loc[0, groupby_var[-1]]]
+                legendgroup = data_sub.loc[0, groupby_var[-1]]
             else:
                 subject_color = marker_color
-            fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var], showlegend=False, 
+                legendgroup = marker_color
+            fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var], showlegend=False, legendgroup=legendgroup,
                                     mode='lines', opacity=0.7, name=subject, line_color=subject_color, line_width=1))
                                     #marker = dict(color=subject_color, line=dict(width = 1))))
     ## Plot group average or multiple group averages
-    if ('group' in groupby_var) | ('group_two' in groupby_var):
+    if ('group' in groupby_var) | ('group_two' in groupby_var) | ('group_three' in groupby_var):
         for group in np.unique(avg_data[groupby_var[-1]]):
             avg_sub = avg_data.loc[avg_data[groupby_var[-1]] == group]
             sem_sub = sem_data.loc[sem_data[groupby_var[-1]] == group]
             fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
                                      mode='lines+markers', 
-                                     error_y = dict(type='data', array=sem_sub[y_var]),
+                                     error_y = dict(type='data', array=sem_sub[y_var]), legendgroup=group,
                                      line = dict(color=group_dict[group]), name=group, showlegend=True))
     else:
         fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
