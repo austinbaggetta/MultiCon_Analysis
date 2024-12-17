@@ -95,7 +95,7 @@ def crop_data(data):
     return df
 
 
-def get_rewarding_ports(data, processed=False):
+def get_rewarding_ports(data):
     """
     Get rewarding ports for that session.
     Args:
@@ -107,27 +107,22 @@ def get_rewarding_ports(data, processed=False):
     """
     ## In more recent circle track experiments, initialization was added to easily get rewarding ports
     ## Previous experiments require assessing from rewarding licks
-    if processed:
-        rewards = data.loc[data['water'] == True]
-        reward_first, reward_second = np.unique(rewards['lick_port'])[0], np.unique(rewards['lick_port'])[1]
-        return reward_first, reward_second
+    if any(data.event == 'initializing'):
+        reward_ports = data.loc[data.event == 'initializing'].reset_index(drop=True)
+        return reward_ports
     else:
-        if any(data.event == 'initializing'):
-            reward_ports = data.loc[data.event == 'initializing'].reset_index(drop=True)
-            return reward_ports
+        all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop=True)
+        reward_ports = pd.DataFrame(all_rewards.unique(), columns=['data'])
+        if reward_ports.empty:
+            reward_first = None
+            reward_second = None
+        elif len(reward_ports) == 1:
+            reward_first = reward_ports.iloc[0, 0]
+            reward_second = None
         else:
-            all_rewards = data.data.loc[data.event == 'REWARD'].reset_index(drop=True)
-            reward_ports = pd.DataFrame(all_rewards.unique(), columns=['data'])
-            if reward_ports.empty:
-                reward_first = None
-                reward_second = None
-            elif len(reward_ports) == 1:
-                reward_first = reward_ports.iloc[0, 0]
-                reward_second = None
-            else:
-                reward_first = reward_ports.iloc[0, 0]
-                reward_second = reward_ports.iloc[1, 0]
-            return reward_first, reward_second
+            reward_first = reward_ports.iloc[0, 0]
+            reward_second = reward_ports.iloc[1, 0]
+        return reward_first, reward_second
     
     
 def normalize_timestamp(data):
@@ -146,22 +141,23 @@ def normalize_timestamp(data):
     return data
 
 
-def get_correct_direction(a, **kwargs):
+def get_correct_direction(a, shift):
     """
     Used to get whether the mouse was running in the correct direction.
     Args:
         a : np.array
             angular position data
-        kwargs 
-            additional arguments for np.diff
+        shift : int
     Returns:
         boolean
     """
-    offset =  np.diff(a, **kwargs)
-    return offset < 0
+    a = np.asarray(a)
+    a_shifted = np.concatenate((np.repeat(0, repeats=shift), a[:-shift]))
+    dif = a - a_shifted
+    return (dif < 0) | (dif > 345)
 
 
-def set_track_and_maze(track, maze_number):
+def set_track_and_maze(maze_number, track='condos'):
     """
     Creates a dataframe of the angular positions of all ports in a specified maze. Needed for dprime calculations.
     Args:
@@ -205,7 +201,7 @@ def set_track_and_maze(track, maze_number):
     return ports
 
 
-def linearize_trajectory(df, angle_type, shift_factor, inner_d=25, outer_d=30, unit='cm'):
+def linearize_trajectory(df, angle_type, shift_factor, inner_d=25, outer_d=30, desired_unit='cm'):
     """
     Linearizes circular position into physical length units.
     Args:
@@ -225,11 +221,11 @@ def linearize_trajectory(df, angle_type, shift_factor, inner_d=25, outer_d=30, u
     Returns:
         linearized_position | result : list
     """
-    if unit == 'cm':
+    if desired_unit == 'cm':
         ## convert inches to cm
         d1 = inner_d * 2.54
         d2 = outer_d * 2.54
-    elif unit == 'in':
+    elif desired_unit == 'in':
         d1 = inner_d
         d2 = outer_d
     ## Take the average of the two since the mouse is between the inner and outer wall
@@ -263,145 +259,66 @@ def bin_linearized_position(linearized_trajectory, angle_type='radians', bin_num
     """
     if angle_type == 'radians':
         bins = np.linspace(0, 2 * np.pi, (bin_num+1))
+        bins = bins[::-1]
         binned = np.digitize(linearized_trajectory, bins)
     elif angle_type == 'degrees':
-        bins = np.linspace(0, np.max(linearized_trajectory), (bin_num+1))
+        bins = np.linspace(0, np.max(linearized_trajectory), (bin_num))
+        bins = bins[::-1]
         binned = np.digitize(linearized_trajectory, bins)
     return binned
 
 
-def get_trials(df, shift_factor, angle_type = 'radians', counterclockwise = True):
+def get_trials(angular_position, jump_val=310, angle_accumulation=-314, min_trial_length=480, convert_to_rad=False):
     """
-    Labels timestamps with trail numbers.
+    Labels each frame as part of a trial.
+    A trial is determined as:
+        a) Whether the mouse passed the zero location in the correct direction
+        b) Whether it accumulated a full rotation around the circle in the correct direction
+        c) Is longer than 40 frames, which helps get rid of small blips
     Args:
-        df : pandas.DataFrame
-        counterclockwise : boolean
-            determines whether session was run with the mouse running counterclockwise; by default True
+        angular_position : np.array or list
+        jump_val : int
+            threshold for determining whether the mouse passed the zero location.
+            either in degrees or radians
+        angle_accumulation : int
+            how many degrees/radians are needed for the cumulative sum of the trial
+        min_trial_length: int
+            how many frames the minimum trial must be. Can help get rid of blips where the mouse is sitting at the zero location.
+        convert_to_rad : bool
+            whether or not you want to convert your angular position data from degrees to radians. If in radians, must account for
+            this in the jump_val and angle_accumulation values
+    Returns:
+        trials : np.array
+            numpy array the same length as your angular position data labeling each value as part of a trial
     """
-    ## Linearize then bin position into one of 8 bins
-    position = linearize_trajectory(df, shift_factor = shift_factor, angle_type = angle_type)
-    binned_position = bin_linearized_position(position, angle_type = angle_type)
-    bins = np.unique(binned_position)
-    ## For each bin, get timestamps when the mouse was in that bin
-    indices = [np.where(binned_position == this_bin)[0] for this_bin in bins]
-    if counterclockwise:  ## reverse the order of the bins.
-        indices = indices[::-1]
-    ## Preallocate trial vector
-    trials = np.full(binned_position.shape, np.nan)
-    trial_start = 0
-    last_idx = 0
-    ## We need to loop through bins rather than simply looking for border crossings because a mouse can backtrack, which we wouldn't want to count.
-    ## For a large number of trials...
-    for trial_number in range(500):
-        ## For each bin...
-        for this_bin in indices:
-            ## Find the first timestamp that comes after the first timestamp in the last bin for that trial. 
-            ## Argmax is supposedly faster than np.where.
-            last_idx = this_bin[np.argmax(this_bin > last_idx)]
-        ## After looping through all the bins, remember the last timestamp where there was a bin transition.
-        trial_end = last_idx
-        ## If the slice still has all NaNs, label it with the trial number.
-        if np.all(np.isnan(trials[trial_start:trial_end])):
-            trials[trial_start:trial_end] = trial_number
-        ## If not, finish up and exit the loop.
+    trials = np.full(len(angular_position), np.nan)
+    if convert_to_rad:
+        lin_pos = angular_position * (np.pi/180)
+    else:
+        lin_pos = angular_position
+
+    prev_idx = 0
+    diffs = np.diff(lin_pos)
+    for trial, jump in enumerate(np.where(diffs > jump_val)[0]):
+        ## Account for first trial
+        if trial == 0:
+            trials[prev_idx:jump+1] = trial
+            prev_idx = jump+1
+            prev_trial = trial ## create prev_trial variable to account for some "trials" in the loop not meeting trial criteria
         else:
-            trials[np.isnan(trials)] = trial_number - 1
-            break
-        ## The start of the next trial is the end of the last.
-        trial_start = trial_end
+            if (np.cumsum(diffs[prev_idx:jump])[-1] <= angle_accumulation) and (len(diffs[prev_idx:jump]) > min_trial_length):
+                trials[prev_idx:jump+1] = prev_trial + 1
+                prev_idx = jump+1
+                prev_trial = prev_trial + 1
+            else:
+                ## If the data points don't meet the above criteria, set those data points as part of the previous trial
+                trials[prev_idx:jump+1] = prev_trial
+                prev_idx = jump+1
+        
+        ## Account for last trial
+        if trial == len(np.where(diffs > jump_val)[0]) - 1:
+            trials[prev_idx:] = prev_trial + 1
     return trials
-
-
-def forward_reverse_trials(aligned_behavior, trials, positive_jump=350, wiggle=2):
-    """
-    After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
-    Args:
-        aligned_behavior : pandas.DataFrame
-            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
-            contains x_pos, y_pos, and a_pos (angular position in degrees)
-        trials : numpy.ndarray
-            array of every timestamp labeled as a trial number; output from get_trials function
-        positive_jump : int
-            The linearized position has a large jump when the angular position resets, so we want our difference 
-            in angular position to be less than this positive jump
-        wiggle : int
-            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
-            incorrect direction due to noise. We want our difference between successive angular positions to
-            be greater than this noise.
-    Returns:
-        forward_trials, backward_trials : list
-            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
-    """
-    forward_trials = []
-    backward_trials = []
-    for trial in np.unique(trials):
-        ## Take the difference between each angular position within a given trial to determine direction
-        if type(aligned_behavior) == xr.core.dataarray.DataArray:
-            diff = aligned_behavior.a_pos[trials == trial].diff(dim='frame')
-        else:
-            diff = aligned_behavior.a_pos[trials == trial].diff()
-        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
-        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
-            forward_trials.append(trial)
-        else:
-            backward_trials.append(trial)
-    return forward_trials, backward_trials
-
-
-def calculate_trial_length(aligned_behavior, angle_type='radians', shift_factor=0, forward_reverse=False, recalc_trials=False):
-    """
-    Calculate the number of seconds that occurs in each trial.
-    Args:
-        aligned_behavior : pandas DataFrame
-            output from aligning behavior
-        angle_type : str
-            what angle type you want the linearize_position to use
-        shift_factor : float
-            how to shift the zero position
-        forward_reverse : boolean
-            will separate trials into forward and reverse trials
-        recalc_trials : boolean
-            will use function get_trials to determine trial structure - not needed if trials already exist from preprocessing
-    Returns:
-        time_diff : list
-            list of times corresponding to the time difference between the beginning and end of the trial
-        time_diff_forward, time_diff_reverse : list
-            list of times corresponding to the time difference between the beginning and end of the trial separated by forward and reverse trials
-    """
-    ## Calculate trials, label each frame as a specific trial
-    if recalc_trials:
-        trials = get_trials(aligned_behavior, shift_factor = shift_factor, angle_type = angle_type, counterclockwise = True)
-    else:
-        trials = aligned_behavior['trials']
-    if forward_reverse:
-        ## Calculate forward and reverse trials
-        forward_trials, reverse_trials = forward_reverse_trials(aligned_behavior, trials, positive_jump = 350, wiggle = 2)
-        time_diff_forward = []
-        time_diff_reverse = []
-        ## Loop through forward trials
-        for f_trial in forward_trials:
-            behavior = aligned_behavior.loc[trials == f_trial]
-            ## Get the first and last timestamp to determine the window
-            first_timestamp, last_timestamp = behavior['t'].to_numpy()[0], behavior['t'].to_numpy()[-1]
-            time_diff_forward.append(last_timestamp - first_timestamp)
-        ## Loop through reverse trials
-        for r_trial in reverse_trials:
-            behavior = aligned_behavior.loc[trials == r_trial]
-            ## Get the first and last timestamp to determine the window
-            first_timestamp, last_timestamp = behavior['t'].to_numpy()[0], behavior['t'].to_numpy()[-1]
-            time_diff_reverse.append(last_timestamp - first_timestamp)
-        ## Comebine for both to do histogram plotting
-        time_diff = time_diff_forward + time_diff_reverse
-        return time_diff_forward, time_diff_reverse
-    else:
-        time_diff = []
-        for trial in np.unique(trials):
-            ## Subset aligned_behavior by a given trial
-            behavior = aligned_behavior.loc[trials == trial]
-            ## Get the first and last timestamp to determine the window
-            first_timestamp, last_timestamp = behavior['t'].to_numpy()[0], behavior['t'].to_numpy()[-1]
-            time_diff.append(last_timestamp - first_timestamp)
-        return time_diff
 
 
 def label_lick_trials(aligned_behavior, lick_tmp, trials):
@@ -438,7 +355,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-def get_forward_reverse_trials(aligned_behavior, positive_jump=350, wiggle=2):
+def get_forward_reverse_trials(aligned_behavior, positive_jump=345, wiggle=2):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
     Args:
@@ -458,14 +375,22 @@ def get_forward_reverse_trials(aligned_behavior, positive_jump=350, wiggle=2):
     """
     forward_trials = []
     backward_trials = []
-    for trial in np.unique(aligned_behavior['trials']):
-        ## Take the difference between each angular position within a given trial to determine direction
-        diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
-        ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
-        if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
-            forward_trials.append(trial)
-        else:
-            backward_trials.append(trial)
+    if type(aligned_behavior) == xr.DataArray:
+        for trial in np.unique(aligned_behavior['trials'].values):
+            diff = np.diff(aligned_behavior['a_pos'].values[aligned_behavior['trials'] == trial])
+            if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
+                forward_trials.append(trial)
+            else:
+                backward_trials.append(trial)
+    else:
+        for trial in np.unique(aligned_behavior['trials']):
+            ## Take the difference between each angular position within a given trial to determine direction
+            diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
+            ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
+            if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
+                forward_trials.append(trial)
+            else:
+                backward_trials.append(trial)
     return forward_trials, backward_trials
 
 
@@ -607,7 +532,7 @@ def calculate_trial_times(aligned_behavior, forward_trials):
 
 def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
     """
-    Used to calculate the first lick percent correct.
+    Used to calculate lick accuracy of a given lick within a bout of licks.
     Args:
         df : pandas.DataFrame
             preprocessed behavior containing columns for trials, lick_ports
@@ -661,7 +586,10 @@ def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
     else:
         count = 0
         lick_port = np.nan         
-        licks = df[df['lick_port'] != -1].reset_index(drop=True)
+        if type(df) == xr.DataArray:
+            licks = pd.DataFrame({'lick_port': df['lick_port'][df['lick_port'] != -1].values})
+        else:
+            licks = df[df['lick_port'] != -1].reset_index(drop=True)
         if licks.empty:
             percent_correct = np.nan 
         else:
@@ -686,7 +614,10 @@ def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
             else:
                 reward_licks = 0
                 for reward_port in port_list:
-                    reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]]) 
+                    try:
+                        reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]])
+                    except:
+                        pass
                 percent_correct = reward_licks / count_licks['threshold_reached'].dropna().sum() * 100
     return percent_correct
 
