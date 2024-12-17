@@ -154,7 +154,7 @@ def get_correct_direction(a, shift):
     a = np.asarray(a)
     a_shifted = np.concatenate((np.repeat(0, repeats=shift), a[:-shift]))
     dif = a - a_shifted
-    return (dif < 0) | (dif > 345)
+    return (dif < 0) | (dif > 310)
 
 
 def set_track_and_maze(maze_number, track='condos'):
@@ -355,43 +355,26 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-def get_forward_reverse_trials(aligned_behavior, positive_jump=345, wiggle=2):
+def get_forward_reverse_trials(behav, percent_correct=90):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
     Args:
-        aligned_behavior : pandas.DataFrame
-            output from load_and_align_behavior function (aligns behavior timestamps to an evenly spaced time vector)
-            contains x_pos, y_pos, and a_pos (angular position in degrees)
-        positive_jump : int
-            The linearized position has a large jump when the angular position resets, so we want our difference 
-            in angular position to be less than this positive jump
-        wiggle : int
-            Since there isn't any temporal smoothing, it is possible for small jumps in angular position in the 
-            incorrect direction due to noise. We want our difference between successive angular positions to
-            be greater than this noise.
+        behav : pandas.DataFrame
+            preprocessed behavior dataframe with trials and correct_dir column
+        percent_correct : int
+            how much of the trial has to be in the correct direction
     Returns:
-        forward_trials, backward_trials : list
-            list of trials that are in the forward (correct) direction or reverse (incorrect) direction
+        forward, backward : np.array
+            array with values indicating forward and reverse trials
     """
-    forward_trials = []
-    backward_trials = []
-    if type(aligned_behavior) == xr.DataArray:
-        for trial in np.unique(aligned_behavior['trials'].values):
-            diff = np.diff(aligned_behavior['a_pos'].values[aligned_behavior['trials'] == trial])
-            if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
-                forward_trials.append(trial)
-            else:
-                backward_trials.append(trial)
-    else:
-        for trial in np.unique(aligned_behavior['trials']):
-            ## Take the difference between each angular position within a given trial to determine direction
-            diff = aligned_behavior.a_pos[aligned_behavior['trials'] == trial].diff()
-            ## If there are NOT any difference values above the wiggle value (noise) and below the positive jump, include as forward
-            if not any(diff[(diff > wiggle) & (diff < positive_jump)]):
-                forward_trials.append(trial)
-            else:
-                backward_trials.append(trial)
-    return forward_trials, backward_trials
+    forward, reverse = [], []
+    for trial in behav['trials'].unique():
+        tdata = behav[behav['trials'] == trial]
+        if (np.sum(tdata['correct_dir']) / tdata.shape[0] * 100) > percent_correct:
+            forward.append(trial)
+        else:
+            reverse.append(trial)
+    return np.asarray(forward), np.asarray(reverse)
 
 
 def dprime_metrics(data, mouse, day, reward_ports, reward_index='one', forward_reverse='all', go_trials=2, nogo_trials=6, **kwargs):
