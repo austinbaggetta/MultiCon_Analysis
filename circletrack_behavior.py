@@ -141,7 +141,7 @@ def normalize_timestamp(data):
     return data
 
 
-def get_correct_direction(a, roi_bin_size=20, reward_direction=1):
+def get_correct_direction(a, roi_bin_size=50, reward_direction=1):
     """
     Determines whether the mouse is moving in the correct direction.
     Args:
