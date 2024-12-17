@@ -141,20 +141,42 @@ def normalize_timestamp(data):
     return data
 
 
-def get_correct_direction(a, shift):
+def get_correct_direction(a, roi_bin_size=20, reward_direction=1):
     """
-    Used to get whether the mouse was running in the correct direction.
+    Determines whether the mouse is moving in the correct direction.
     Args:
-        a : np.array
-            angular position data
-        shift : int
+        a : np.array, pd.Series, list
+            Angular position of the mouse (in degrees)
+        roi_bin_size : int
+            how large the angular bin sizes should be to track direction
+        reward_direction : int
+            set as 1 or -1 dependingn on the maze.yml for that circle track
     Returns:
-        boolean
+        direction_boolean : np.array
+            whether or not the mouse was in the correct direction, labels every frame
     """
-    a = np.asarray(a)
-    a_shifted = np.concatenate((np.repeat(0, repeats=shift), a[:-shift]))
-    dif = a - a_shifted
-    return (dif < 0) | (dif > 310)
+    direction_boolean = np.full(len(a), False)
+    rois = np.arange(0, 360, roi_bin_size)
+    roi_last = None
+    for angle_idx, ang in enumerate(a):
+        dif = ang - rois
+        idx = (np.abs(dif)).argmin()
+        cur_roi = rois[idx]
+
+        if cur_roi != roi_last:
+            try:
+                prev_roi = rois[idx + np.sign(reward_direction)]
+            except IndexError:
+                prev_roi = rois[(idx + np.sign(reward_direction)) % len(rois)]
+            
+            if roi_last == prev_roi:
+                direction_boolean[angle_idx] = True
+            else:
+                direction_boolean[angle_idx] = False
+            roi_last = cur_roi
+        else:
+            direction_boolean[angle_idx] = direction_boolean[angle_idx-1]
+    return direction_boolean
 
 
 def set_track_and_maze(maze_number, track='condos'):
@@ -500,17 +522,6 @@ def bin_data(data, bin_size=2):
     bins = np.arange(0, len(data), bin_size)
     binned = np.split(data, bins)
     return [np.nanmean(bin) for bin in binned if bin.size > 0]
-
-
-def calculate_trial_times(aligned_behavior, forward_trials):
-    trial_length_dict = {'trial': [], 'trial_length': []}
-    for trial in forward_trials:
-        behavior = aligned_behavior[aligned_behavior.trial == trial]
-        first, last = behavior.timestamp.to_numpy()[0], behavior.timestamp.to_numpy()[-1]
-        trial_length = last - first
-        trial_length_dict['trial'].append(trial)
-        trial_length_dict['trial_length'].append(trial_length)
-    return trial_length_dict
 
 
 def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
@@ -899,23 +910,6 @@ def convert_to_cm(behav=None, x=None, y=None, pixels_per_cm=5.5380577427821525, 
         return behav
     else:
         return x_cm, y_cm
-    
-
-def calculate_reward_positions(dar, reward_attrs=['reward_one', 'reward_two']):
-    """
-    Used to get the x and y position of your reward ports.
-    Args:
-        dar : xarray.DataArray
-            preprocessed output containing lick_port as a coordinate and reward ports as attributes
-        reward_attrs : list
-            list of attribute names for reward ports; by default reward_one, reward_two (since two reward ports)
-    """
-    reward_positions = []
-    for port in reward_attrs:
-        reward_x = dar['x'][dar['lick_port'] == dar.attrs[port]].mean().values
-        reward_y = dar['y'][dar['lick_port'] == dar.attrs[port]].mean().values
-        reward_positions.append((reward_x, reward_y))
-    return reward_positions
 
 
 def front_back_ports(reward_list, zero_start=False, nports=8):
