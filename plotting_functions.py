@@ -260,7 +260,7 @@ def plot_cell_contribution(assemblies, colorscale='Viridis', **kwargs):
 
 
 def stem_plot(pattern, baseline=0, plot_members=True, member_color='blue', nonmem_color='black', 
-              hline_color='black', size=2, opacity=0.5, **kwargs):
+              hline_color='black', size=3, opacity=0.5, **kwargs):
     """
     Create a stem plot, where the marker indicates the weight of that neuron in this ensemble. Members of the ensemble are plotted in a separate color.
     Args:
@@ -365,14 +365,16 @@ def plot_raster(data, bool_data, time, colorscale = 'gray_r', line_color = 'blac
     return fig
 
 
-def plot_activation_strength(activations, ensemble_number, x_bin_size=None, marker_color='red', **kwargs):
+def plot_activation_strength(activations, ensemble_number, sampling_rate=1/30, x_bin_size=None, marker_color='red', **kwargs):
     if x_bin_size is not None:
-        time_vector = np.arange(0, activations.shape[1]*x_bin_size, x_bin_size)
+        act = ctb.bin_data(activations[ensemble_number], bin_size=x_bin_size)
+        time_vector = np.arange(0, len(act), sampling_rate)
     else:
-        time_vector = np.arange(0, activations.shape[1])
+        act = activations[ensemble_number]
+        time_vector = np.arange(0, activations.shape[1]*sampling_rate, sampling_rate)
     fig = custom_graph_template(**kwargs)
-    fig.add_trace(go.Scatter(x=time_vector, y=activations[ensemble_number],
-                            mode='markers', marker_color=marker_color, opacity =0.7))
+    fig.add_trace(go.Scatter(x=time_vector, y=act,
+                            mode='markers', marker_color=marker_color, opacity=0.7))
     return fig
 
 
@@ -427,7 +429,10 @@ def plot_group_averages(df, y_col_name, x_col_name, group_color_dict, mouse_grou
     Returns:
         fig : plotly.graph_object
     """
-    mouse_grouped_data = df.groupby(mouse_grouping_variables, as_index=False).agg({y_col_name: 'mean'})
+    if mouse_grouping_variables is not None:
+        mouse_grouped_data = df.groupby(mouse_grouping_variables, as_index=False).agg({y_col_name: 'mean'})
+    else:
+        mouse_grouped_data = df.copy()
     avg_df = df.groupby(avg_grouping_variables, as_index=False).agg({y_col_name: ['mean', 'sem']})
 
     fig = px.strip(mouse_grouped_data, x=x_col_name, y=y_col_name, color='group', hover_name='mouse',
@@ -617,4 +622,52 @@ def create_polar_plots(fig_data, bar_color, data_col='r', error_col=None, **kwar
             angularaxis = dict(showticklabels=True, ticks='', showgrid=True, gridcolor='darkgrey'),
             barmode='overlay'
         )
+    return fig
+
+
+def preprocessed_plots(data_out, angle_type='degrees', position_color='darkgrey', save_path=None):
+    """
+    Used to visualize accuracy of preprocessing raw circle track data.
+    Args:
+        data_out : pandas.DataFrame
+            dataframe with (at least) columns: t, a_pos, lin_position, water, lick_port, trials, correct_dir
+        angle_type : str
+            degrees or radians
+        save_path : str
+            by default None; specify path to save html graphic
+    Returns:
+        fig : plotly.graph_object
+    """
+    fig = custom_graph_template(x_title='Time (s)', y_title=f'Position ({angle_type})', width=1000, height=1000, 
+                                rows=3, shared_y=True, shared_x=True)
+
+    if angle_type == 'degrees':
+        lin_pos = data_out['a_pos']
+    else:
+        lin_pos = data_out['lin_position']
+
+    ## Plot licks and rewards on top of linearized position in the first row
+    fig.add_trace(go.Scattergl(x=data_out['t'], y=lin_pos, mode='markers', marker_color=position_color, marker_size=2, name='Position'), row=1, col=1)
+    fig.add_trace(go.Scattergl(x=data_out['t'][data_out['water']], y=lin_pos[data_out['water']], 
+                            mode='markers', marker_color='red', marker_size=5, name='Rewards'), row=1, col=1)
+    fig.add_trace(go.Scattergl(x=data_out['t'][data_out['lick_port'] != -1], y=lin_pos[data_out['lick_port'] != -1],
+                            mode='markers', marker_color='black', marker_size=4, opacity=0.3, name='Licks'), row=1, col=1)
+
+    ## Plot trials
+    fig.add_trace(go.Scatter(x=data_out['t'], y=lin_pos, mode='markers', marker_color=position_color, marker_size=2, name='Position'), row=2, col=1)
+    for trial in data_out['trials'].unique():
+        tbool = data_out['trials'] == trial
+        fig.add_trace(go.Scatter(x=data_out['t'][tbool], y=lin_pos[tbool], mode='markers', marker_size=2, 
+                                legendgroup='trials', name=f'Trial {trial}', showlegend=False), row=2, col=1)
+
+    ## Plot data points in the correct direction
+    fig.add_trace(go.Scattergl(x=data_out['t'], y=lin_pos, mode='markers', marker_color=position_color, marker_size=2, name='Position'), row=3, col=1)
+    fig.add_trace(go.Scattergl(x=data_out['t'][data_out['correct_dir']], y=lin_pos[data_out['correct_dir']], 
+                            mode='markers', marker_size=2, marker_color='midnightblue', name='Correct Direction'), row=3, col=1)
+
+    fig['data'][3]['showlegend'] = True
+    fig['data'][3]['name'] = 'Trials'
+
+    if save_path is not None:
+        fig.write_html(os.path.join(save_path, f"{data_out['animal'].unique()[0]}_{data_out['session_two'].unique()[0]}_preprocessed.html"))
     return fig
