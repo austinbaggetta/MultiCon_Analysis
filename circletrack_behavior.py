@@ -290,7 +290,7 @@ def bin_linearized_position(linearized_trajectory, angle_type='radians', bin_num
     return binned
 
 
-def get_trials(angular_position, jump_val=310, angle_accumulation=-314, min_trial_length=480, convert_to_rad=False):
+def get_trials(angular_position, jump_val=295, angle_accumulation=-295, min_trial_length=335, convert_to_rad=False):
     """
     Labels each frame as part of a trial.
     A trial is determined as:
@@ -306,6 +306,7 @@ def get_trials(angular_position, jump_val=310, angle_accumulation=-314, min_tria
             how many degrees/radians are needed for the cumulative sum of the trial
         min_trial_length: int
             how many frames the minimum trial must be. Can help get rid of blips where the mouse is sitting at the zero location.
+            default of 335 works well for miniscope mice, 280 works better for non-miniscope mice
         convert_to_rad : bool
             whether or not you want to convert your angular position data from degrees to radians. If in radians, must account for
             this in the jump_val and angle_accumulation values
@@ -321,14 +322,14 @@ def get_trials(angular_position, jump_val=310, angle_accumulation=-314, min_tria
 
     prev_idx = 0
     diffs = np.diff(lin_pos)
-    for trial, jump in enumerate(np.where(diffs > jump_val)[0]):
+    for trial, jump in enumerate(np.where(diffs >= jump_val)[0]):
         ## Account for first trial
         if trial == 0:
             trials[prev_idx:jump+1] = trial
             prev_idx = jump+1
             prev_trial = trial ## create prev_trial variable to account for some "trials" in the loop not meeting trial criteria
         else:
-            if (np.cumsum(diffs[prev_idx:jump])[-1] <= angle_accumulation) and (len(diffs[prev_idx:jump]) > min_trial_length):
+            if (np.cumsum(diffs[prev_idx:jump])[-1] <= angle_accumulation) and (len(diffs[prev_idx:jump]) >= min_trial_length):
                 trials[prev_idx:jump+1] = prev_trial + 1
                 prev_idx = jump+1
                 prev_trial = prev_trial + 1
@@ -377,7 +378,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-def get_forward_reverse_trials(behav, percent_correct=90):
+def get_forward_reverse_trials(behav, percent_correct=70):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
     Args:
