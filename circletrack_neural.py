@@ -50,7 +50,7 @@ def open_minian(dpath, post_process=None, return_dict=False):
         xarray.DataArray: [loaded data]
     """
     dslist = [
-        xr.open_zarr(pjoin(dpath, d))
+        xr.open_zarr(pjoin(dpath, d), consolidated=False)
         for d in os.listdir(dpath)
         if isdir(pjoin(dpath, d)) and d.endswith(".zarr")
     ]
@@ -310,7 +310,7 @@ def import_mouse_neural_data(path, mouse, key_file, session = '20min', neural_ty
     return sessions
 
 
-def calculate_activity_correlation(first_session, second_session, test = 'pearson'):
+def calculate_activity_correlation(first_session, second_session, test='spearman'):
     """
     Calculates the pearson or spearman correlation coefficients for two sessions.
     Uses each cell's average activity across the session.
@@ -324,8 +324,8 @@ def calculate_activity_correlation(first_session, second_session, test = 'pearso
             res[0] gives the test statistic, res[1] gives the pvalue
     """
     ## Calculate mean activity
-    avg_first_session = first_session.values.mean(axis = 1)
-    avg_second_session = second_session.values.mean(axis = 1)
+    avg_first_session = first_session.values.mean(axis=1)
+    avg_second_session = second_session.values.mean(axis=1)
     ## Perform correlation test
     if test == 'pearson':
         res = pearsonr(avg_first_session, avg_second_session)
@@ -477,13 +477,29 @@ def align_calcium_behavior(act, behav, col_name='unix'):
         pandas.DataFrame with aligned indices and all columns
     """
     act_shifted = align_start_end_times(act, behav, col_name=col_name)
+    events = behav[(behav['lick_port'] != -1) | (behav['water'])].reset_index(drop=True)
     timestamps_calc = act_shifted[col_name].values
+    if np.where(np.diff(timestamps_calc) < 0)[0].size > 0:
+        jump_value = abs(np.min(np.diff(timestamps_calc)))
+        timestamp_idx = np.where(np.diff(timestamps_calc) < 0)[0][0]
+        timestamps_calc[timestamp_idx+1:] = timestamps_calc[timestamp_idx+1:] + jump_value
     timestamps_calc = timestamps_calc.reshape(len(timestamps_calc), 1)
     timestamps_behav = np.array(behav.loc[:, col_name])
     if col_name == 'timestamps':
         timestamps_behav = np.array(behav.loc[:, col_name]) / 1000 ## convert to seconds
     aligned_indices = np.abs(timestamps_calc - timestamps_behav).argmin(axis=1)
-    return act_shifted, behav.loc[aligned_indices, :].reset_index(drop=True)
+    aligned_behav = behav.loc[aligned_indices, :].reset_index(drop=True)
+    ## Re-insert events. Captures all rewards, but some licks are dropped due to how fast the licking is.
+    aligned_behav['lick_port'] = -1
+    aligned_behav['water'] = False
+    timestamps_events = np.array(events.loc[:, col_name])
+    timestamps_aligned_behav = np.array(aligned_behav.loc[:, col_name])
+    timestamps_events = timestamps_events.reshape(len(timestamps_events), 1)
+    new_aligned_indices = np.abs(timestamps_events - timestamps_aligned_behav).argmin(axis=1)
+    for event_idx, aligned_idx in enumerate(new_aligned_indices):
+        aligned_behav.loc[aligned_idx, :] = events.loc[event_idx, :]
+    aligned_behav = aligned_behav.sort_values(by=col_name).reset_index(drop=True)
+    return act_shifted, aligned_behav
 
 
 def calculate_otsu_thresh(spike_data):
@@ -513,3 +529,7 @@ def extract_windowed_data(data, window_val, window_size, col_name=None):
         d = data[(data >= window_val - window_size) & (data <= window_val + window_size)]
     return d
 
+
+def bootstrap_z_values(val, shuffled_val):
+    z_values = (val - np.mean(shuffled_val, axis=0)) / np.std(shuffled_val, axis=0, ddof=1)
+    return z_values
