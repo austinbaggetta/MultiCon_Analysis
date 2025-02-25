@@ -100,10 +100,13 @@ def get_rewarding_ports(data):
     Get rewarding ports for that session.
     Args:
         data : pandas.DataFrame
-            circle_track.csv data with three columns
+            circle_track.csv data with three columns or preprocessed behavior dataframe
     Returns:
+        reward_ports : list
+            returns list of rewarding ports
         reward_first, reward_second : str
-            returns string of which ports were the rewarding ports in that session
+            returns string of which ports were the rewarding ports in that session. Maintained for 
+            mice that were run before the four circular tracks (condos) were built.
     """
     ## In more recent circle track experiments, initialization was added to easily get rewarding ports
     ## Previous experiments require assessing from rewarding licks
@@ -525,7 +528,7 @@ def bin_data(data, bin_size=2):
     return [np.nanmean(bin) for bin in binned if bin.size > 0]
 
 
-def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
+def lick_accuracy(df, port_list, lick_threshold, by_trials=False, to_percent=True):
     """
     Used to calculate lick accuracy of a given lick within a bout of licks.
     Args:
@@ -541,6 +544,11 @@ def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
         percent_correct : float or list
             returns a single value when not calculated on a trial by trial basis
     """
+    if to_percent:
+        scale_factor = 100
+    else:
+        scale_factor = 1
+
     if by_trials:
         percent_correct = []
         for trial in np.unique(df['trials']):
@@ -576,7 +584,7 @@ def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
                                 reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]])
                             except:
                                 pass
-                        percent_correct.append(reward_licks / count_licks['threshold_reached'].dropna().sum() * 100)
+                        percent_correct.append(reward_licks / count_licks['threshold_reached'].dropna().sum() * scale_factor)
                 
     else:
         count = 0
@@ -613,7 +621,7 @@ def lick_accuracy(df, port_list, lick_threshold, by_trials=False):
                         reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]])
                     except:
                         pass
-                percent_correct = reward_licks / count_licks['threshold_reached'].dropna().sum() * 100
+                percent_correct = reward_licks / count_licks['threshold_reached'].dropna().sum() * scale_factor
     return percent_correct
 
 
@@ -648,7 +656,7 @@ def performance_drop(accuracy, day_list, replace=False):
 
 def fix_lick_ports(behav, reward_one, reward_two):
     """
-    Used to fix lick port identity when water == True in cohort0's behavior dataframe.
+    Used to fix lick port identity when water == True in Will's old mice behavior dataframes.
     Args:
         behav : pandas.DataFrame
         reward_one, reward_two : numpy.int64
