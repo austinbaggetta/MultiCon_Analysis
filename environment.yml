@@ -41,4 +41,3 @@ dependencies:
   - umap-learn
   - netcdf4
   - h5netcdf
-prefix: /home/austinbaggetta/.conda/envs/calcium
