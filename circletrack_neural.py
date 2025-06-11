@@ -1,27 +1,19 @@
 import os
 import pickle
-import yaml
-from os import listdir
 from os.path import isdir
 from os.path import join as pjoin
-
-import matplotlib.pyplot as plt
-import networkx as nx
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import pylab as pl
 import xarray as xr
-from numpy.polynomial.polynomial import polyfit
-from plotly.subplots import make_subplots
-from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
+from scipy.ndimage import gaussian_filter, label
 from skimage.filters import threshold_otsu
 from scipy.stats import pearsonr, zscore, spearmanr
 from scipy.ndimage import convolve
 import itertools
-## Austin's custom py files
+## Austin's custom .py files
+import circletrack_behavior as ctb
 import pca_ica as ica
+import place_cells as pc
 
 
 def get_seconds(time_str, character='_'):
@@ -64,7 +56,7 @@ def open_minian(dpath, post_process=None, return_dict=False):
     return ds
  
 
-def calculate_activity_correlation(first_session, second_session, test='spearman'):
+def calculate_activity_correlation(first_session, second_session, session_avg=True, test='spearman'):
     """
     Calculates the pearson or spearman correlation coefficients for two sessions.
     Uses each cell's average activity across the session.
@@ -77,42 +69,40 @@ def calculate_activity_correlation(first_session, second_session, test='spearman
         res : list
             res[0] gives the test statistic, res[1] gives the pvalue
     """
-    ## Calculate mean activity
-    avg_first_session = first_session.values.mean(axis=1)
-    avg_second_session = second_session.values.mean(axis=1)
+    if session_avg:
+        ## Calculate mean activity
+        d1 = first_session.values.mean(axis=1)
+        d2 = second_session.values.mean(axis=1)
+    else:
+        d1 = first_session
+        d2 = second_session
     ## Perform correlation test
     if test == 'pearson':
-        res = pearsonr(avg_first_session, avg_second_session)
+        res = pearsonr(d1, d2)
     elif test == 'spearman':
-        res = spearmanr(avg_first_session, avg_second_session)
+        res = spearmanr(d1, d2)
     else:
         raise Exception('No test selected!')
     return res
 
 
-def moving_average(data, ksize = 5):
+def moving_average(data, ksize=8):
     kernel = np.ones(ksize)/ksize
     result = np.empty([data.shape[0], data.shape[1]])
     for i in np.arange(0, data.shape[0]):
-        result[i] = convolve(input=data[i], output='float', weights=kernel, mode='nearest')
+        result[i] = np.convolve(data[i], v=kernel, mode='same')
     return result
 
 
-def calculate_event_rates(data, bin_size_sec, fps=15, zscore=False):
-    """
-    Calculate event rate.
-    Args: 
-    Returns:
-        event_rates : np.array
-            event rate of each cell within each time bin, cell x bin array
-    """
-    if zscore:
-        activity = zscore(data, axis=1) ## z-score each cell
-    else:
-        activity = data
-    num_spikes = ica.bin_transients(activity, bin_size_sec, fps=fps, analysis_type='num_spikes')
-    event_rates = num_spikes / bin_size_sec
-    return event_rates
+def moving_average_xarray(data, ksize=8):
+    return xr.apply_ufunc(
+    np.convolve,
+    data,
+    input_core_dims=[['frame']],
+    output_core_dims=[['frame']],
+    vectorize=True,
+    keep_attrs=True,
+    kwargs={'v': np.ones(ksize)/ksize, 'mode': 'same'}).rename(f'{data.name}_smoothed')
 
 
 def cell_quantiles(cell_array, quantile, test, quantile_lower=None):
@@ -228,6 +218,120 @@ def extract_windowed_data(data, window_val, window_size, col_name=None):
     return d
 
 
+def extract_windowed_data_by_index(data, window_val, window_size, fps=30):
+    w = window_size * fps ## window_size in seconds
+    return data[int(window_val - w):int(window_val + w + 1)]
+
+
 def bootstrap_z_values(val, shuffled_val):
     z_values = (val - np.mean(shuffled_val, axis=0)) / np.std(shuffled_val, axis=0, ddof=1)
     return z_values
+
+
+def subset_correct_dir_and_running(sdata, correct_dir=True, only_running=True, lin_pos_col='a_pos', velocity_thresh=10, filter_width=2):
+    """ 
+    Function to subset data based on whether mouse is moving in the correct direction or not and whether
+    the mouse is running or not.
+    Args:
+        sdata : xarray.DataArray
+            aligned miniscope and behavior data
+        correct_dir, only_running : bool
+            boolean for whether mouse is moving in the correct direction and running
+        velocity_thresh : int or float
+            speed threshold to determine running in cm/s
+    Returns:
+        neural_data : numpy.array
+            matrix of neural response values that are subset based on direction and running
+        position_data : numpy.array
+            linearized position values that are also subset based on direction and running
+    """
+    if correct_dir:
+        forward, _ = ctb.get_forward_reverse_trials(sdata)
+        sess = sdata[:, sdata['trials'] == forward[0]]
+        for trial in forward[1:]:
+            loop_sess = sdata[:, sdata['trials'] == trial]
+            sess = xr.concat([sess, loop_sess], dim='frame')
+    else:
+        sess = sdata.copy()
+
+    x_pos, y_pos, _ = ctb.smooth_over_trials(sdata, lin_pos_col=lin_pos_col, filter_width=filter_width)
+
+    x_cm, y_cm = ctb.convert_to_cm(x=x_pos, y=y_pos)
+    if only_running:
+        velocity, running = pc.define_running_epochs(x_cm, 
+                                                     y_cm, 
+                                                     sess['behav_t'].values, 
+                                                     velocity_thresh=velocity_thresh)
+        position_data = sess[lin_pos_col].values[running]
+        neural_data = sess[:, running]
+    else:
+        position_data = sess[lin_pos_col].values 
+        neural_data = sess
+    return neural_data, position_data
+
+
+def bin_activity(data, bin_size_seconds, fps=30, func=np.mean, binarized=None):
+    if type(data) is not np.ndarray:
+        data = np.asarray(data)
+    samples = bin_size_seconds * fps
+    bins = np.arange(samples, data.shape[1], samples).astype(int)
+    binned = np.split(data, bins, axis=1)
+    if binarized is not None:
+        act = [func(bin > binarized, axis=1) for bin in binned]
+    else:
+        act = [func(bin, axis=1) for bin in binned]
+    return np.vstack(act).T 
+
+
+def define_population_bursts(ar, min_len=3, zthresh=2, first_zscore=True, second_zscore=True):
+    """
+    Extract synchronous population events (bursts) by first thresholding above some zthresh then combining all events
+    of at least the min_len.
+    Args:
+        ar : xarray.DataArray or numpy.ndarray
+            Preprocessed calcium imaging data
+        min_len : int
+            minimum number of frames above the threshold to be considered a burst
+        zthresh : int
+            any value above this z-value will be considered part of a burst
+        first_zscore, second_zscore : bool
+            first_zscore normalizes each cell
+            second_zscore will then zscore the average population activity
+    """
+    if first_zscore:
+        ## Z-score each cell
+        zdata = zscore(ar, axis=1)
+    else:
+        zdata = ar
+    ## Average population activity
+    pop_act = np.nanmean(zdata, axis=0)
+    if second_zscore:
+        pop_act = zscore(pop_act)
+    ## Get frames where the population activity is above some z-threshold
+    above_thresh = pop_act > zthresh
+    ## Label every frame not above zthresh with zero, label frames above zthresh with what burst they belong to
+    burst_array, burst_count = label(above_thresh)
+    burst_start = np.array([np.min(np.where(burst_array==b + 1)[0]) for b in np.arange(burst_count) if np.where(burst_array==b+1)[0].shape[0] >= min_len])
+    burst_end = np.array([np.max(np.where(burst_array==b + 1)[0]) for b in np.arange(burst_count) if np.where(burst_array==b+1)[0].shape[0] >= min_len])
+    return burst_start, burst_end
+
+
+def bin_in_time(da, bin_size=5, session_time=900, time_col='behav_t'):
+    """
+    Bins preprocessed xarray.DataArray based on behavior time.
+    Args:
+        da : xarray.DataArray
+            aligned calcium and behavior data
+        bin_size : int
+            bin size in seconds
+        session_time : int
+            session time in seconds
+    Returns:
+        ar : list
+            list of binned xarray.DataArrays
+    """
+    ar = []
+    time_bins = np.arange(0, session_time + bin_size, bin_size)
+    for bin in time_bins[:-1]:
+        ar.append(da[:, (da[time_col] >= bin) & (da[time_col] < (bin + bin_size))])
+    return ar
