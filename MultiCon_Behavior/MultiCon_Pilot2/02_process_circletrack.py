@@ -60,8 +60,8 @@ for mouse in mouse_list:
                 print(session)
                 print(todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0])
                 circle_track = pd.read_csv(subset[i])
-                reward_one, reward_two = ctb.get_rewarding_ports(circle_track, processed=False)
-                rewards = [reward_one, reward_two]
+                reward_ports = ctb.get_rewarding_ports(circle_track, processed=False)
+                rewards = [x for x in reward_ports['data']]
                 for idx in np.arange(0, len(circle_track['event'])):
                     if 'probe' in circle_track['event'][idx]:
                         probe_end = float(re.search('probe length: ([0-9]+)', circle_track['event'][idx])[1])

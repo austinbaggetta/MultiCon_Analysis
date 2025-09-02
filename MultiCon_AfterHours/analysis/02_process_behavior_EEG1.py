@@ -13,55 +13,11 @@ import circletrack_behavior as ctb
 
 # %%
 ## Set parameters
-session_dict = {
-    'mc_EEG1_01': [
-        'A1',
-        'A2',
-        'A3',
-        'A4',
-        'A5',
-        'B1',
-        'B2',
-        'B3',
-        'B4',
-        'B5',
-        'C1',
-        'C2',
-        'C3',
-        'C4',
-        'C5',
-        'D1',
-        'D2',
-        'D3',
-        'D4',
-        'D5'
-    ],
-    'mc_EEG1_02': [
-        'A1',
-        'A2',
-        'A3',
-        'A4',
-        'A5',
-        'B1',
-        'B2',
-        'B3',
-        'B4',
-        'B5',
-        'C1',
-        'C2',
-        'C3',
-        'C4',
-        'C5',
-        'A2_1',
-        'A2_2',
-        'A2_3',
-        'A2_4',
-        'A2_5'
-    ]
-}
+todays_mazes = pd.read_csv('../../../MultiCon_AfterHours/MultiCon_EEG1/maze_yml/todays_mazes.csv')
+todays_mazes_type2 = pd.read_csv('../../../MultiCon_AfterHours/MultiCon_EEG1/maze_yml/todays_mazes_type2.csv')
 behavior_path = "../../../MultiCon_AfterHours/MultiCon_EEG1/circletrack_data"
 output_path = "../../../MultiCon_AfterHours/MultiCon_EEG1/output/behav"
-cohort_number = 'cohort0'
+cohort_number = 'mc_eeg1'
 mouse_list = ['mc_EEG1_01', 'mc_EEG1_02']
 downsample = False
 if downsample:
@@ -85,13 +41,13 @@ combined_list = ctb.combine(file_list, mouseID)
 combined_log = ctb.combine(log_list, mouseID)
 
 # %%
-for mouse in tqdm(mouse_list):
+for mouse in tqdm(mouse_list): 
     natsort_key = natsort_keygen()
     subset = ctb.subset_combined(combined_list, mouse).reset_index(drop=True)
     subset_log = ctb.subset_combined(combined_log, mouse).reset_index(drop=True)
     subset = sorted(subset, key=natsort_key)
     subset_log = sorted(subset_log, key=natsort_key)
-    for i, session in tqdm(enumerate(session_dict[mouse]), leave=False):
+    for i, session in tqdm(enumerate(todays_mazes.columns[1:]), leave=False): ## start from index 1 since index 0 is mouseID
         print(session)
         circle_track = pd.read_csv(subset[i])
         rewards = circle_track.loc[circle_track['event'] == 'initializing', 'data'].tolist()
@@ -133,7 +89,8 @@ for mouse in tqdm(mouse_list):
             data_out.loc[idx, "lick_port"] = port
             if row["event"] == "REWARD":
                 data_out.loc[idx, "water"] = True
-        data_out[["animal", "session", "cohort"]] = mouse, session, cohort_number
+        data_out[["animal", "session", "cohort"]] = mouse, todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0], cohort_number
+        data_out['session_two'] = todays_mazes_type2[session][todays_mazes_type2['Mouse'] == mouse].tolist()[0]
         data_out["trials"] = ctb.get_trials(
             data_out, shift_factor=0, angle_type="radians", counterclockwise=True
         )
@@ -152,6 +109,9 @@ for mouse in tqdm(mouse_list):
         else:
             data_out['maze'] = subset_log[i][-9:-4]
         result_path = pjoin(output_path, mouse)
-        data_out.to_feather(pjoin(result_path, "{}_{}.feat".format(mouse, session)))
+        if i <= 8:
+            data_out.to_feather(pjoin(result_path, f"{mouse}_{session[-1]}.feat")) ## label with day number
+        else:
+            data_out.to_feather(pjoin(result_path, f"{mouse}_{session[-2:]}.feat"))
 
 # %%

@@ -1,32 +1,19 @@
 import os
-import pickle
-import yaml
-from os import listdir
-from os.path import isdir
-from os.path import join as pjoin
-
-import matplotlib.pyplot as plt
-import networkx as nx
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-import pylab as pl
 import xarray as xr
-from numpy.polynomial.polynomial import polyfit
-from plotly.subplots import make_subplots
-from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
+from os.path import join as pjoin
+from scipy.ndimage.filters import gaussian_filter
 from scipy.stats import pearsonr, zscore, spearmanr
-import itertools
+from scipy.ndimage import generic_filter
 
-from random import randint
-import multiprocessing as mp
-from joblib import Parallel, delayed
-from tqdm import tqdm
-from scipy.signal import savgol_filter
-from sklearn.impute import SimpleImputer
+import circletrack_behavior as ctb
+import plotting_functions as pf
+import circletrack_neural as ctn
 
-def define_running_epochs(x, y, t, velocity_thresh=7):
+
+def define_running_epochs(x, y, t, velocity_thresh=10):
     """
     Used to determine where a mouse is running above a given threshold.
     Args:
@@ -40,473 +27,276 @@ def define_running_epochs(x, y, t, velocity_thresh=7):
     """
     delta = np.diff(np.asarray((x, y)).T, axis = 0)
     dists = np.hypot(delta[:, 0], delta[:, 1])
-    dists = np.insert(dists, 0, 0)
-    velocity = dists / np.diff(t, prepend = 0) ## in seconds
+    dists = np.insert(dists, 0, np.mean(dists)) ## if you insert 0, will cause inf due to division
+    diff_t = np.diff(t, prepend=0)
+    zero_data = np.where(diff_t == 0)[0]
+    diff_t[zero_data] = 0.0000000001 ## when miiniscope drops frames and the same behavior times get used for nearby frames. This
+    ## ensures there are no np.float64('inf') due to division by zero
+    velocity = dists / diff_t ## in seconds
+    velocity[velocity > 100000] = 0 ## can reset to zero to exclude these since their velocity is crazy high
     running = velocity > velocity_thresh
     return velocity, running
 
 
-def spatial_bin(x, y, bin_size_cm=20, show_plot=False, weights=None, bins=None, one_dim=False, nbins=None):
-    """
-    Spatially bins the position data.
+def adjust_behavior_start(x, y, t):
+    """ 
+    Used to remove the seconds at the beginning of the behavior for miniscope 
+    mice since the session is started then the mouse is dropped into the maze.
     Args:
-        x,y: array-like
-            Vector of x and y positions in cm.
-        bin_size_cm: float
-            Bin size in centimeters.
-        show_plot: bool
-            Flag for plotting.
-        weights: array-like
-            Vector the same size as x and y, describing weights for
-            spatial binning. Used for making place fields (weights
-            are booleans indicating timestamps of activity).
-        ax: Axis object
-            If you want to reference an exis that already exists. If None,
-            makes a new Axis object.
-    Returns:
-        H: (nx,ny) array
-            2d histogram of position.
-        xedges, yedges: (n+1,) array
-            Bin edges along each dimension.
+        x, y, t : np.array
+            x, y, and time (in seconds) of mouse position data
+        sampling_rate : float
+            sampling rate of your behavior
     """
-    ## Calculate the min and max of position.
-    x_extrema = [min(x), max(x)]
-    y_extrema = [min(y), max(y)]
-    ## Calculate bins 
+    x_cm, y_cm = ctb.convert_to_cm(x=x, y=y)
+    velocity, _ = define_running_epochs(x=x_cm, y=y_cm, t=t)
+    index = np.where(velocity > 500)[0]
+    return index
+
+
+def spatial_bins(x, y=None, bin_size=2, nbins=None, bins=None, weights=None, show_plot=True, **kwargs):
+    """ 
+    Create spatial bins of either x,y position data, or linearized position data.
+    If radians, bin_size=0.16 for 2cm bins.
+    """
+    x_extrema = [np.min(x), np.max(x)]
+
     if nbins is None:
-        nbins = int(np.round(np.diff(x_extrema)[0] / bin_size_cm))
-    ## Calculate bins if one dimensional
-    if one_dim:
-        if bins is None:
-            bins = np.linspace(
-                x_extrema[0], x_extrema[1],
-                nbins
-            )
-        H, edges = np.histogram(x, bins, weights=weights)
+        nbins = int(np.round(np.diff(x_extrema)[0] / bin_size))
+    
+    if bins is not None:
+        nbins = bins
+
+    if y is not None:
+        H, x_edges, y_edges = np.histogram2d(x, y, nbins, weights=weights)
+
         if show_plot:
-            fig = px.imshow(H, template='simple_white')
-            fig.update_layout(height=500, width=500)
+            fig = pf.custom_graph_template(**kwargs)
+            fig.add_trace(go.Heatmap(x=x_edges, y=y_edges, z=H))
             fig.show()
-        return H, edges, bins
+        return H, x_edges, y_edges
+    
     else:
-        if bins is None:
-            ## Make bins.
-            xbins = np.linspace(
-                x_extrema[0], x_extrema[1], nbins
-            )
-            ybins = np.linspace(
-                y_extrema[0], y_extrema[1], nbins
-            )
-            bins = [ybins, xbins]
-        # #Do the binning.
-        H, xedges, yedges = np.histogram2d(y, x, bins, weights=weights)
+        H, x_edges = np.histogram(x, nbins, weights=weights)
+
         if show_plot:
-            fig = px.imshow(H, template='simple_white')
-            fig.update_layout(height=500, width=500)
+            fig = pf.custom_graph_template(**kwargs)
+            fig.add_trace(go.Bar(x=x_edges, y=H))
             fig.show()
-        return H, xedges, yedges, bins
+        return H, x_edges
 
 
-############ Modified from wmau PlaceFields.py code ############
-
-
-
-def consecutive_dist(x, axis=0, zero_pad=False):
+def minimum_activity_level(data, minimum_event_amount=0.2, **kwargs):
     """
-    Calculates the the distance between consecutive points in a vector.
-    Args:
-        aligned_behavior : pandas.DataFrame
-            Output from circletrack_behavior.load_and_align_behavior function
-    Returns:
-        dists: array-like, distances
+    Used to determine whether a cell should be included in spatial analyses.
+    Split the activity into x-second long bins (for example, 60s bins would yield 15).
+    If a cell fires in more than 20% of those bins (for example, more than 3 bins), output will be True
     """
-    ## Calculate differences
-    delta = np.diff(x, axis=axis)
-    dists = np.hypot(delta[:, 0], delta[:, 1])
-    if zero_pad:
-        dists = np.insert(dists, 0, 0)
-    return dists
+    binned_data = ctn.bin_activity(data, **kwargs)
+    ## Determine proportion of events
+    prop_events = np.sum(binned_data > 0, axis=1) / binned_data.shape[1]
+    return prop_events >= minimum_event_amount
 
 
-def cart2pol(x, y):
+def make_place_field(neural_data, two_dim=True, binarize=False, **kwargs):
+    if binarize:
+        neural_data = neural_data > 0
+
+    if two_dim:
+        pf, x_edges, y_edges = spatial_bins(weights=neural_data, **kwargs)
+        return pf, x_edges, y_edges
+    else:
+        pf, x_edges = spatial_bins(weights=neural_data, **kwargs)
+        return pf, x_edges
+
+
+def spatial_activity(neural_data, position_data, bin_size, binarized=True):
     """
-    Cartesian to polar coordinates. For linearizing circular trajectory.
-    Args:
-        aligned_behavior : pandas.DataFrame
-           Output from load_and_align_behavior function
-    Returns:
-        (phi, rho): tuple
-            Angle (linearized distance) and radius (distance from center).
+    Returns the number of events of all cells across spatial bins that can then be normalized by occupancy. Position_data is linearized position.
     """
-    ## Calculate rho and phi
-    rho = np.sqrt(x ** 2 + y ** 2)
-    phi = np.arctan2(y, x)
-    return (phi, rho)
+    bins = ctb.calculate_bins(x=position_data, bin_size=bin_size)
+    population_activity = np.zeros((len(bins)-1, neural_data.shape[0]))
+    occupancy = np.zeros((len(bins)-1))
+    for idx, (start, end) in enumerate(zip(bins[:-1], bins[1:])):
+        binned_data = neural_data[:, (position_data >= start) & (position_data < end)]
+        occupancy[idx] = binned_data.shape[1]
+        if binarized:
+            population_activity[idx, :] = np.sum(binned_data > 0, axis=1)
+        else:
+            population_activity[idx, :] = np.sum(binned_data, axis=1)
+    return population_activity, occupancy, bins
 
 
-def define_field_bins(placefield, field_threshold=0.5):
-    field_bins = np.where(placefield >= max(placefield) * field_threshold)[0]
+def get_tuning_curves(population_activity, occupancy):
+    tuning_curves = np.zeros((population_activity.shape[0], population_activity.shape[1]))
+    for n in np.arange(0, population_activity.shape[1]):
+        tuning_curves[:, n] = population_activity[:, n] / occupancy
+    return tuning_curves
 
-    return field_bins
 
-
-def spatial_information(tuning_curve, occupancy):
-    """
-    Calculate spatial information in one neuron's activity.
-    :parameters
-    ---
-    tuning_curve: array-like
-        Activity (S or binary S) per spatial bin.
-    occupancy: array-like
-        Time spent in each spatial bin.
-    :return
-    ---
-    spatial_bits_per_spike: float
-        Spatial bits per spike.
-    """
-    # Make 1-D.
-    tuning_curve = tuning_curve.flatten()
-    occupancy = occupancy.flatten()
-
-    # Only consider activity in visited spatial bins.
-    tuning_curve = tuning_curve[occupancy > 0]
-    occupancy = occupancy[occupancy > 0]
-
-    # Find rate and mean rate.
-    rate = tuning_curve / occupancy
-    mrate = tuning_curve.sum() / occupancy.sum()
-
-    # Get occupancy probability.
+def skaggs_information_content(tuning_curves, occupancy):
+    mean_rate = np.mean(tuning_curves, axis=0)
     prob = occupancy / occupancy.sum()
-
-    # Handle log2(0).
-    index = rate > 0
-
-    # Spatial information formula.
-    bits_per_spk = sum(
-        prob[index] * (rate[index] / mrate) * np.log2(rate[index] / mrate)
-    )
-    return bits_per_spk
+    ## Handle log2(0)
+    index = tuning_curves > 0
+    ## Spatial information formula
+    bits_per_event = [np.sum(prob[index[:, n]] * (tuning_curves[:, n][index[:, n]] / mean_rate[n]) * np.log2(tuning_curves[:, n][index[:, n]] / mean_rate[n])) for n in np.arange(0, tuning_curves.shape[1])]
+    return np.array(bits_per_event)
 
 
-class PlaceFields:
-    def __init__(
-        self,
-        t,
-        x,
-        y,
-        neural_data,
-        bin_size=None,
-        circular=False,
-        linearized=False,
-        shuffle_test=True,
-        fps=None,
-        velocity_threshold=7,
-        nbins=20,
-    ):
-        """
-        Place field object.
-        Args:
-            t: array
-                Time array in milliseconds.
-            x, y: (t,) arrays
-                Positions per sample. Should be in cm. If circular==True,
-                x will be converted to radians, but you should also use
-                circle_radius.
-            neural_data: (n,t) array
-                Neural activity (usually S).
-            bin_size: int
-                Bin size in cm.
-            circular: bool
-                Whether the x data is in radians (for circular tracks).
-            shuffle_test: bool
-                Flag to shuffle data in time to recompute spatial information.
-            fps: int
-                Sampling rate. If None, will try to compute based on supplied
-                time vector.
-            threshold: float
-                Velocity to threshold whether animal is running or not (cm/s).
-        """
-        imp = SimpleImputer(missing_values=np.nan, strategy='constant',
-                            fill_value=0)
-        neural_data = imp.fit_transform(neural_data.T).T
-        if bin_size is not None and nbins is not None:
-            print('Warning! Both bin_size and nbins were assigned values. '
-                  'nbins will take priority. Proceed with caution.')
-        x_extrema = [min(x), max(x)]
-        y_extrema = [min(y), max(y)]
-        ## Calculate bins 
-        if nbins is None:
-            nbins = int(np.round(np.diff(x_extrema)[0] / bin_size))
+def spatial_coherence_kernel(size):
+    """ 
+    Create a kernel for calculating the mean across spatial bins, excluding the center bin.
+    Args:
+        size : int
+            must be an odd integer
+    Returns:
+        kernel : numpy.array
+            a numpy array with 0 at the center and 1s on either side
+    """
+    sides = np.repeat(a=1, repeats=((size-1) / 2))
+    return np.concatenate((sides, np.array([0]), sides)) / size
+
+
+def calculate_spatial_coherence(tuning_curves, ksize):
+    """
+    Calculate spatial coherence for each cell in a population of cells.
+    Population activity is a P x N matrix, where P is the number of spatial bins and N is the number of neurons.
+    Args:
+        ksize : int
+            must be odd - determines size of kernel for averaging. Kernel in the form of [1, 0, 1], for example.
+    """
+    kernel = spatial_coherence_kernel(size=ksize)
+    avg_of_avg = np.zeros((tuning_curves.shape[0], tuning_curves.shape[1]))
+    spatial_coherence_values = np.zeros((tuning_curves.shape[1]))
+    for n in np.arange(0, tuning_curves.shape[1]):
+        avg_of_avg[:, n] = generic_filter(tuning_curves[:, n], function=np.mean, footprint=kernel, output=float, mode='wrap')
+        spatial_coherence_values[n] = pearsonr(tuning_curves[:, n], avg_of_avg[:, n])[0]
+    return avg_of_avg, spatial_coherence_values
+
+
+def first_second_half_stability(ar, bin_size, lin_pos_col='lin_position'):
+    """
+    Separate neural activity into the first half and second half of the sesion.
+    Args:
+        data : xarray.DataArray
+            aligned calcium and behavior
+        bin_size : float
+            size of linear position bins, either radians or degrees
+        lin_pos_col : str
+            name of position column, one of a_pos or lin_position (radians)
+    Returns:
+        cell_stability : numpy.ndarray
+            array of Pearson's r values correlating spatially binned activity between the two halves
+    """
+    trials = np.unique(ar['trials'])
+    data = ar[:, ar['trials'] == trials[0]]
+    for trial in trials[1:]:
+        trial_data = ar[:, ar['trials'] == trial]
+        data = xr.concat([data, trial_data], dim='frame')
+    median_trial = np.median(data['trials'])
+    first_half = data[:, data['trials'] <= median_trial]
+    second_half = data[:, data['trials'] > median_trial]
+    bins = ctb.calculate_bins(x=data[lin_pos_col].values, bin_size=bin_size)
+
+    first_pop_act = np.zeros((data.shape[0], len(bins)))
+    second_pop_act = np.zeros((data.shape[0], len(bins)))
+    for idx, (start, end) in enumerate(zip(bins[:-1], bins[1:])):
+        binned_data = first_half.values[:, (first_half[lin_pos_col] >= start) & (first_half[lin_pos_col] < end)]
+        avg_activity = np.sum(binned_data > 0, axis=1) / binned_data.shape[1]
+        first_pop_act[:, idx] = avg_activity
+
+        binned_data = second_half.values[:, (second_half[lin_pos_col] >= start) & (second_half[lin_pos_col] < end)]
+        avg_activity = np.sum(binned_data > 0, axis=1) / binned_data.shape[1]
+        second_pop_act[:, idx] = avg_activity
+
+    cell_stability = np.zeros((data.shape[0]))
+    for cell in np.arange(0, data.shape[0]):
+        cell_stability[cell] = pearsonr(first_pop_act[cell], second_pop_act[cell])[0]
+    cell_stability
+    return cell_stability
+
+
+def odd_even_stability(data, bin_size, lin_pos_col='lin_position'):
+    """
+    Splits the data into odd and even forward trials (correct direction trials).
+    Args:
+        data : xarray.DataArray
+            aligned calcium and behavior
+        bin_size : float
+            size of linear position bins, either radians or degrees
+        lin_pos_col : str
+            name of position column, one of a_pos or lin_position (radians)
+    Returns:
+        odd_even_ar : numpy.ndarray
+            array of Pearson's r values correlating spatially binned activity between the odd and even trials
+    """
+    data['trials'] = data['trials'] + 1 ## since trials start at trial 0
+    bins = ctb.calculate_bins(x=data[lin_pos_col].values, bin_size=bin_size)
+    trials = np.unique(data['trials'])
+    odd_data = data[:, data['trials'] == trials[0]]
+    even_data = data[:, data['trials'] == trials[1]]
+    for trial in trials[2:]:
+        trial_data = data[:, data['trials'] == trial]
+        if trial % 2 != 0:
+            odd_data = xr.concat([odd_data, trial_data], dim='frame')
         else:
-            nbins = nbins
-        ## Set data and meta data
-        self.data = {
-            "t": t,
-            "x": x,
-            "y": y,
-            "neural": neural_data,
-            "n_neurons": neural_data.shape[0],
-        }
-        self.meta = {
-            "circular": circular,
-            "linearized": True if circular else linearized,
-            "bin_size": bin_size,
-            "nbins": nbins,
-            "velocity_threshold": velocity_threshold,
-        }
+            even_data = xr.concat([even_data, trial_data], dim='frame')
 
-        ## Get fps.
-        if fps is None:
-            self.meta["fps"] = self.get_fps()
-        else:
-            self.meta["fps"] = int(fps)
+    odd_pop_act = np.zeros((data.shape[0], len(bins)))
+    even_pop_act = np.zeros((data.shape[0], len(bins)))
+    for idx, (start, end) in enumerate(zip(bins[:-1], bins[1:])):
+        binned_data = odd_data.values[:, (odd_data[lin_pos_col] >= start) & (odd_data[lin_pos_col] < end)]
+        avg_activity = np.sum(binned_data > 0, axis=1) / binned_data.shape[1]
+        odd_pop_act[:, idx] = avg_activity
 
-        ## Compute distance and velocity. Smooth the velocity.
-        velocity, running = define_running_epochs(self.data['x'], 
-                                                  self.data['y'], 
-                                                  self.data['t'],
-                                                  self.meta['velocity_threshold'])
-        d = consecutive_dist(
-            np.asarray((self.data["x"], self.data["y"])).T, zero_pad=True
-        )
-        self.data["velocity"] = velocity
-        self.data["running"] = running
-
-        ## If we're using circular position, convert data to radians.
-        if self.meta["circular"]:
-            x_extrema = [min(x), max(x)]
-            y_extrema = [min(y), max(y)]
-            width = np.diff(x_extrema)[0]
-            height = np.diff(y_extrema)[0]
-
-            self.meta["circle_radius"] = np.mean([width, height]) / 2
-            center = [np.mean(x_extrema), np.mean(y_extrema)]
-
-            # Convert to angles (linear position) and radii (distance from center).
-            angles, radii = cart2pol(x - center[0], y - center[1])
-
-            # Shift everything so that 12 o'clock (pi/2) is 0.
-            angles += np.pi / 2
-            self.data['x'] = np.mod(angles, 2 * np.pi)
-            self.data['y'] = np.zeros_like(self.data['x'])
-        
-        ## Get occupancy bins
-        (
-            self.data["occupancy_map"],
-            self.data["occupancy_bins"],
-        ) = self.make_occupancy_map(show_plot=False)
-
-        ## Calculate all place fields
-        self.data['placefields'] = self.make_all_place_fields()
-
-        ## Calculate normalized by occupancy place fields
-        self.data['normalized_placefields'] = self.make_all_place_fields(normalize=True)
-
-        ## Calculate spatial information
-        self.data['spatial_information'] = []
-        for pf in self.data['placefields']:
-            data = spatial_information(pf, self.data['occupancy_map'])
-            self.data['spatial_information'].append(data)
-
-        ## Find place field centers
-        self.data["placefield_centers"] = self.find_pf_centers()
-
-        ## Significance test
-        if shuffle_test:
-            (
-                self.data["spatial_info_pvals"],
-                self.data["spatial_info_z"],
-            ) = self.assess_spatial_sig_parallel()
+        binned_data = even_data.values[:, (even_data[lin_pos_col] >= start) & (even_data[lin_pos_col] < end)]
+        avg_activity = np.sum(binned_data > 0, axis=1) / binned_data.shape[1]
+        even_pop_act[:, idx] = avg_activity
+    odd_even_ar = np.zeros((data.shape[0]))
+    for cell in np.arange(0, data.shape[0]):
+        odd_even_ar[cell] = pearsonr(odd_pop_act[cell], even_pop_act[cell])[0]
+    return odd_even_ar
 
 
-    def get_fps(self):
-        """
-        Get sampling frequency by counting interframe interval.
-        :return:
-        """
-        # Take difference.
-        interframe_intervals = np.diff(self.data["t"])
-
-        # Inter-frame interval in milliseconds.
-        mean_interval = np.mean(interframe_intervals)
-        fps = round(1 / (mean_interval))
-
-        return int(fps)
-
-
-    def make_occupancy_map(self, show_plot=True, ax=None):
-        """
-        Makes the occupancy heat cell_map of the animal.
-        :parameters
-        ---
-        bin_size_cm: float, bin size in centimeters.
-        show_plot: bool, flag for plotting.
-        """
-        temp = spatial_bin(
-            self.data["x"][self.data["running"]],
-            self.data["y"][self.data["running"]],
-            bin_size_cm=self.meta["bin_size"],
-            show_plot=show_plot,
-            one_dim=self.meta["linearized"],
-            nbins=self.meta["nbins"]
-        )
-        occupancy_map, occupancy_bins = temp[0], temp[-1]
-        return occupancy_map, occupancy_bins
-    
-
-    def make_place_field(
-        self, neuron, show_plot=True, normalize_by_occ=False, ax=None, shuffle=False
-    ):
-        """
-        Bins activity in space. Essentially a 2d histogram weighted by
-        neural activity.
-        :parameters
-        ---
-        neuron: int, neuron index in neural_data.
-        bin_size_cm: float, bin size in centimeters.
-        show_plot: bool, flag for plotting.
-        :return
-        ---
-        pf: (x,y) array, 2d histogram of position weighted by activity.
-        """
-        if shuffle:
-            random_shift = randint(300, self.data["neural"].shape[1])
-            neural_data = np.roll(self.data["neural"][neuron], random_shift)
-        else:
-            neural_data = self.data["neural"][neuron]
-
-        pf = spatial_bin(
-            self.data["x"][self.data["running"]],
-            self.data["y"][self.data["running"]],
-            bin_size_cm=self.meta["bin_size"],
-            nbins=self.meta["nbins"],
-            show_plot=False,
-            weights=neural_data[self.data["running"]],
-            one_dim=self.meta["linearized"],
-            bins=self.data["occupancy_bins"],
-        )[0]
-
-        # Normalize by occupancy.
-        if normalize_by_occ:
-            pf = pf / self.data["occupancy_map"]
-
-        if show_plot:
-            if ax is None:
-                fig, ax = plt.subplots()
-
-            if self.meta['circular']:
-                ax.plot(pf)
-            else:
-                ax.imshow(pf, origin="lower")
-
-        return pf
+def shuffle_spatial_metrics(ar, lin_pos_col, bin_size, binarized=True, ksize=8, nshuffles=500, seed=24601):
+    np.random.seed(seed)
+    ## Preassign arrays for spatial metric outputs
+    shuffled_ar_si = np.zeros((nshuffles, ar.shape[0]))
+    shuffled_ar_sc = np.zeros((nshuffles, ar.shape[0]))
+    for shuffle in np.arange(0, nshuffles):
+        ## Shift position data forward by a random number of frames
+        shuffled_data = np.array(())
+        for trial in np.unique(ar['trials']):
+            position = ar[lin_pos_col][ar['trials'] == trial].values
+            random_shift = np.random.randint(0, position.shape[0])
+            rolled_position = np.roll(position, random_shift)
+            shuffled_data = np.concatenate((shuffled_data, rolled_position))
+        ## Calculate spatial coherence and spatial information with the reordered data
+        population_activity, occupancy, _ = spatial_activity(ar, shuffled_data, bin_size=bin_size, binarized=binarized)
+        shuffled_tuning_curves = get_tuning_curves(population_activity, occupancy)
+        shuffled_ar_si[shuffle, :] = skaggs_information_content(shuffled_tuning_curves, occupancy)
+        _, spatial_coherence_values = calculate_spatial_coherence(shuffled_tuning_curves, ksize=ksize)
+        shuffled_ar_sc[shuffle, :] = spatial_coherence_values
+    return shuffled_ar_si, shuffled_ar_sc
 
 
-    def make_all_place_fields(self, normalize=False):
-        """
-        Compute the spatial rate maps of all neurons.
-        :return:
-        """
-        pfs = []
-        for neuron in range(self.data["neural"].shape[0]):
-            pfs.append(self.make_place_field(neuron, show_plot=False, normalize_by_occ=normalize))
-
-        return np.asarray(pfs)
-
-    
-    def find_pf_centers(self, normalize = False):
-        if normalize:
-            centers = [np.argmax(pf) for pf in self.data["normalized_placefields"]]
-        else:
-            centers = [np.argmax(pf) for pf in self.data["placefields"]]
-
-        return np.asarray(centers)
-    
-
-    def make_snake_plot(self, order="sorted", neurons="all", normalize=True):
-        if neurons == "all":
-            neurons = np.asarray([int(n) for n in range(self.data["n_neurons"])])
-        pfs = self.data["normalized_placefields"][neurons]
-
-        if order == "sorted":
-            order = np.argsort(self.data["placefield_centers"][neurons])
-
-        if normalize:
-            pfs /= np.nanmax(pfs, axis=1)[:, np.newaxis]
-
-        fig, ax = plt.subplots()
-        ax.imshow(pfs[order])
-        ax.axis('tight')
-        ax.set_xlabel('Position')
-        ax.set_ylabel('Neuron #')
-
-        return fig, ax
-
-
-    def assess_spatial_sig(self, neuron, n_shuffles=500):
-        shuffled_SIs = []
-        for i in range(n_shuffles):
-            shuffled_pf = self.make_place_field(neuron, show_plot=False, normalize_by_occ=False, shuffle=True)
-            shuffled_SIs.append(
-                spatial_information(shuffled_pf, self.data["occupancy_map"])
-            )
-
-        shuffled_SIs = np.asarray(shuffled_SIs)
-        p_value = np.sum(self.data["spatial_information"][neuron] < shuffled_SIs) / n_shuffles
-
-        SI_z = (self.data["spatial_information"][neuron] - np.mean(shuffled_SIs)) / np.std(
-            shuffled_SIs
-        )
-
-        return p_value, SI_z
-
-
-    def assess_spatial_sig_parallel(self):
-        print("Doing shuffle tests. This may take a while.")
-        neurons = [n for n in range(self.data["n_neurons"])]
-        n_cores = mp.cpu_count()
-        # with futures.ProcessPoolExecutor() as pool:
-        #     results = pool.map(self.assess_spatial_sig, neurons)
-        results = Parallel(n_jobs=n_cores)(
-            delayed(self.assess_spatial_sig)(i) for i in neurons
-        )
-
-        pvals, SI_z = zip(*results)
-
-        return np.asarray(pvals), np.asarray(SI_z)
-    
-
-    def plot_dots(
-        self, neuron, std_thresh=2, pos_color="k", transient_color="r", ax=None
-    ):
-        """
-        Plots a dot show_plot. Position samples with suprathreshold activity
-        dots overlaid.
-        :parameters
-        ---
-        neuron: int, neuron index in neural_data.
-        std_thresh: float, number of standard deviations above the mean
-            to show_plot "spike" dot.
-        pos_color: color-like, color to make position samples.
-        transient_color: color-like, color to make calcium transient-associated
-            position samples.
-        """
-        # Define threshold.
-        thresh = np.mean(self.data["neural"][neuron]) + std_thresh * np.std(
-            self.data["neural"][neuron]
-        )
-        supra_thresh = self.data["neural"][neuron] > thresh
-
-        # Plot.
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        ax.scatter(self.data["x"], self.data["y"], s=3, c=pos_color)
-        ax.scatter(
-            self.data["x"][supra_thresh],
-            self.data["y"][supra_thresh],
-            s=3,
-            c=transient_color,
-        )
-
+def shuffle_stability_metrics(ar, bin_size, lin_pos_col='lin_position', nshuffles=500, seed=24601):
+    np.random.seed(seed)
+    ## Preassign arrays for spatial stability outputs
+    shuffled_ar_first_second = np.zeros((nshuffles, ar.shape[0]))
+    shuffled_ar_odd_even = np.zeros((nshuffles, ar.shape[0]))
+    for shuffle in np.arange(0, nshuffles):
+        ## Shift position data forward by a random number of frames
+        shuffled_data = np.array(())
+        for trial in np.unique(ar['trials']):
+            position = ar[lin_pos_col][ar['trials'] == trial].values
+            random_shift = np.random.randint(0, position.shape[0])  
+            rolled_position = np.roll(position, random_shift)
+            shuffled_data = np.concatenate((shuffled_data, rolled_position))
+        ## Calculate trial stability of cells with the reordered positions
+        ar_new = ar.copy()
+        ar_new = ar_new.assign_coords(reordered_pos=('frame', shuffled_data))
+        shuffled_ar_first_second[shuffle, :] = first_second_half_stability(ar_new, bin_size=bin_size, lin_pos_col='reordered_pos')
+        shuffled_ar_odd_even[shuffle, :] = odd_even_stability(ar_new, bin_size=bin_size, lin_pos_col='reordered_pos')
+    return shuffled_ar_first_second, shuffled_ar_first_second

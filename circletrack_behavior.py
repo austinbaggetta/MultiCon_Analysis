@@ -1,11 +1,10 @@
+import re
+import glob
 import pandas as pd
 import numpy as np
 import xarray as xr
-import yaml
-import os
-import re
-import glob
-import pingouin as pg
+from scipy.ndimage import gaussian_filter
+# import pingouin as pg
 import plotly.graph_objects as go
 from os.path import join as pjoin
 from scipy.stats import norm
@@ -293,7 +292,7 @@ def bin_linearized_position(linearized_trajectory, angle_type='radians', bin_num
     return binned
 
 
-def get_trials(angular_position, jump_val=295, angle_accumulation=-295, min_trial_length=335, convert_to_rad=False):
+def get_trials(angular_position, jump_val=295, angle_accumulation=-294, min_trial_length=220, convert_to_rad=False):
     """
     Labels each frame as part of a trial.
     A trial is determined as:
@@ -309,7 +308,6 @@ def get_trials(angular_position, jump_val=295, angle_accumulation=-295, min_tria
             how many degrees/radians are needed for the cumulative sum of the trial
         min_trial_length: int
             how many frames the minimum trial must be. Can help get rid of blips where the mouse is sitting at the zero location.
-            default of 335 works well for miniscope mice, 280 works better for non-miniscope mice
         convert_to_rad : bool
             whether or not you want to convert your angular position data from degrees to radians. If in radians, must account for
             this in the jump_val and angle_accumulation values
@@ -381,7 +379,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-def get_forward_reverse_trials(behav, percent_correct=70):
+def get_forward_reverse_trials(behav, percent_correct=60):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
     Args:
@@ -394,9 +392,14 @@ def get_forward_reverse_trials(behav, percent_correct=70):
             array with values indicating forward and reverse trials
     """
     forward, reverse = [], []
-    for trial in behav['trials'].unique():
-        tdata = behav[behav['trials'] == trial]
-        if (np.sum(tdata['correct_dir']) / tdata.shape[0] * 100) > percent_correct:
+    if type(behav) == xr.DataArray:
+        trials = np.unique(behav['trials'])
+    else:
+        trials = behav['trials'].unique()
+
+    for trial in trials:
+        tdata = behav['correct_dir'][behav['trials'] == trial]
+        if (np.sum(tdata) / tdata.shape[0] * 100) > percent_correct:
             forward.append(trial)
         else:
             reverse.append(trial)
@@ -857,37 +860,37 @@ def relative_port_distance(reward_one, reward_two, maze):
     return np.min([shifted_angles[reward_one-1], shifted_angles[reward_two-1]])
 
 
-def port_lick_chisquared(behav, num_ports=8, probe=True):
-    """
-    Determine if observed licking at ports is significantly different than expected by chance.
-    Args:
-        behav : pandas.DataFrame
-            behavior dataframe with probe and lick_port info
-        num_ports : int
-            number of ports in circle track; by default 8
-        probe : bool
-            Whether to look at licking only during probe or outside of probe; by default True
-    Returns:
-        expected, observed, stats : pandas.DataFrame
-            read pinguoin documentation on pg.chi2_independence
-    """
-    if probe:
-        data = behav[behav['probe']]
-    else:
-        data = behav[~behav['probe']]
+# def port_lick_chisquared(behav, num_ports=8, probe=True):
+#     """
+#     Determine if observed licking at ports is significantly different than expected by chance.
+#     Args:
+#         behav : pandas.DataFrame
+#             behavior dataframe with probe and lick_port info
+#         num_ports : int
+#             number of ports in circle track; by default 8
+#         probe : bool
+#             Whether to look at licking only during probe or outside of probe; by default True
+#     Returns:
+#         expected, observed, stats : pandas.DataFrame
+#             read pinguoin documentation on pg.chi2_independence
+#     """
+#     if probe:
+#         data = behav[behav['probe']]
+#     else:
+#         data = behav[~behav['probe']]
 
-    ## Calculate expected value at a port E(P) = 1/n_p x total_licks
-    total_licks = data[data['lick_port'] != -1].shape[0]
-    expected_value = (1/num_ports) * total_licks ## 8 water ports by default
+#     ## Calculate expected value at a port E(P) = 1/n_p x total_licks
+#     total_licks = data[data['lick_port'] != -1].shape[0]
+#     expected_value = (1/num_ports) * total_licks ## 8 water ports by default
     
-    actual_licks, expected_licks = pd.DataFrame(), pd.DataFrame()
-    actual_licks['lick_port'] = data['lick_port'][data['lick_port'] != -1].reset_index(drop=True)
-    expected_licks['lick_port'] = np.repeat(np.arange(1, num_ports+1), repeats=round(expected_value))
-    actual_licks['type'] = 'actual'
-    expected_licks['type'] = 'expected'
-    lick_df = pd.concat([expected_licks, actual_licks])
-    expected, observed, stats = pg.chi2_independence(lick_df, x='lick_port', y='type')
-    return expected, observed, stats
+#     actual_licks, expected_licks = pd.DataFrame(), pd.DataFrame()
+#     actual_licks['lick_port'] = data['lick_port'][data['lick_port'] != -1].reset_index(drop=True)
+#     expected_licks['lick_port'] = np.repeat(np.arange(1, num_ports+1), repeats=round(expected_value))
+#     actual_licks['type'] = 'actual'
+#     expected_licks['type'] = 'expected'
+#     lick_df = pd.concat([expected_licks, actual_licks])
+#     expected, observed, stats = pg.chi2_independence(lick_df, x='lick_port', y='type')
+#     return expected, observed, stats
 
 
 def convert_to_cm(behav=None, x=None, y=None, pixels_per_cm=5.5380577427821525, update_dataframe=False):
@@ -984,7 +987,7 @@ def label_lick_bout(df):
     return licks
 
 
-def calculate_bins(x, bin_size=0.4):
+def calculate_bins(x, bin_size):
     """
     Used to calculate bins of a given variable based on bin size.
     """
@@ -993,3 +996,15 @@ def calculate_bins(x, bin_size=0.4):
     return bins
 
 
+def smooth_over_trials(sess, filter_width=2, lin_pos_col='a_pos'):
+    ## Smooth position datta in order to better capture true frame-by-frame velocity changes
+    ## Smooth on a per-trial basis to prevent creating fake position points when going from 0 to 360
+    lin_pos = np.array([])
+    x_pos = np.array([])
+    y_pos = np.array([])
+    for trial in np.unique(sess['trials']):
+        tdata = sess[:, sess['trials'] == trial]
+        lin_pos = np.concatenate((lin_pos, gaussian_filter(tdata[lin_pos_col], filter_width)))
+        x_pos = np.concatenate((x_pos, gaussian_filter(tdata['x'], filter_width)))
+        y_pos = np.concatenate((y_pos, gaussian_filter(tdata['y'], filter_width)))
+    return x_pos, y_pos, lin_pos

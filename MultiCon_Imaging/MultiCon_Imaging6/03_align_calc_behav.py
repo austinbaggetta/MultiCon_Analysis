@@ -14,14 +14,16 @@ project_dir = 'MultiCon_Imaging'
 experiment_dir = 'MultiCon_Imaging6'
 minian_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/minian_results')
 output_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/output')
-mouse_list = ['mc56']
-session_type = 'YrA'
+mouse_info =  pd.read_csv(os.path.abspath(f'../../../{project_dir}/{experiment_dir}/maze_yml/mouse_info.csv'))
+mouse_list = ['mc54', 'mc55', 'mc56', 'mc58', 'mc59', 'mc60']
+mouse_list = ['mc55']
+session_type = 'C'
 
 for mouse in mouse_list:
     mpath = os.path.abspath(pjoin(minian_path, mouse))
     for idx, session in tqdm(enumerate(natsorted(os.listdir(mpath)))):
         print(f'Aligning {session}...')
-        if (mouse == 'mc44') & (idx > 7):
+        if (mouse == 'mc55') & (idx > 1):
             idx += 1
         dpath = pjoin(mpath, session)
         timestamp = os.listdir(dpath)[0] ## minian timestamp is first folder
@@ -60,8 +62,11 @@ for mouse in mouse_list:
                                                     reward_two=aligned_behav.loc[0, 'reward_two'],
                                                     maze=aligned_behav.loc[0, 'maze'],
                                                     date=date,
-                                                    timestamp=timestamp))
+                                                    timestamp=timestamp,
+                                                    sex=mouse_info['Sex'][mouse_info['Mouse'] == mouse].values[0],
+                                                    group=mouse_info['Group'][mouse_info['Mouse'] == mouse].values[0]))
         cropped_calc = cropped_calc.reset_coords(names='animal', drop=True)
         ## Save cropped_calc as a netcdf file
         cropped_calc.to_netcdf(save_path)
+
 # %%

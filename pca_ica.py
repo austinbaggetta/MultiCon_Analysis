@@ -19,9 +19,8 @@ from tqdm import tqdm
 from scipy.stats import pearsonr, spearmanr, zscore
 import plotly.express as px
 import plotly.graph_objects as go
-import pymannkendall as mk
 from statsmodels.stats.multitest import multipletests
-import pingouin as pg
+# import pingouin as pg
 import numpy.matlib
 import pickle
 from os.path import join as pjoin
@@ -29,6 +28,7 @@ from os.path import join as pjoin
 import circletrack_behavior as ctb
 import circletrack_neural as ctn
 import place_cells as pc
+import mannkendall as mk
 
 __author__ = "Vítor Lopes dos Santos"
 __version__ = "2019.1"
@@ -100,7 +100,7 @@ def binshuffling(zactmat, significance):
 
 
 def circshuffling(zactmat, significance):
-    np.random.seed(42)
+    np.random.seed(24601)
 
     lambdamax_ = np.zeros(significance.nshu)
     for shui in tqdm(range(significance.nshu)):
@@ -710,37 +710,37 @@ def align_activations_to_behavior(activations, aligned_behavior):
     return indexed_behavior
 
 
-def ensemble_trends_linear_regression(act, x_bin_size = 1, analysis_type = 'average_value', alpha_old = 0.05, correction = 'sidak'):
-    ## Bin activations
-    binned_activations = []
-    for ensemble in act:
-        binned_activations.append(bin_transients(ensemble[np.newaxis], x_bin_size, fps = 15, analysis_type = analysis_type, non_binary = True)[0])
-    binned_activations = np.vstack(binned_activations)
-    ## Do multiple linear corrections
-    linear_regression_dict = {}
-    for ensemble_number, ensemble_data in enumerate(binned_activations):
-        time_vector = np.arange(0, binned_activations.shape[1])
-        linear_regression_dict[ensemble_number] = pg.linear_regression(time_vector, ensemble_data, as_dataframe = False)
-    ## Correct for multiple testing
-    numtests = len(linear_regression_dict)
-    if correction == 'sidak':
-        alpha_corrected = (1 - (1 - alpha_old)**(1/numtests))
-    elif correction == 'bonferroni':
-        alpha_corrected = (1 - (alpha_old / numtests))
-    ## Loop trough all linear regression outputs, check if pvalue < alpha_corrected
-    ensemble_trends = {}
-    no_trend = {}
-    decreasing = {}
-    increasing = {}
-    for i in np.arange(0, len(linear_regression_dict)):
-        if (linear_regression_dict[i]['pval'][1] < alpha_corrected) & (linear_regression_dict[i]['coef'][1] < 0):
-            decreasing[i] = linear_regression_dict[i]
-        elif (linear_regression_dict[i]['pval'][1] < alpha_corrected) & (linear_regression_dict[i]['coef'][1] > 0):
-            increasing[i] = linear_regression_dict[i]
-        else:
-            no_trend[i] = linear_regression_dict[i]
-    ensemble_trends = {'no trend': no_trend, 'decreasing': decreasing, 'increasing': increasing}
-    return ensemble_trends
+# def ensemble_trends_linear_regression(act, x_bin_size = 1, analysis_type = 'average_value', alpha_old = 0.05, correction = 'sidak'):
+#     ## Bin activations
+#     binned_activations = []
+#     for ensemble in act:
+#         binned_activations.append(bin_transients(ensemble[np.newaxis], x_bin_size, fps = 15, analysis_type = analysis_type, non_binary = True)[0])
+#     binned_activations = np.vstack(binned_activations)
+#     ## Do multiple linear corrections
+#     linear_regression_dict = {}
+#     for ensemble_number, ensemble_data in enumerate(binned_activations):
+#         time_vector = np.arange(0, binned_activations.shape[1])
+#         linear_regression_dict[ensemble_number] = pg.linear_regression(time_vector, ensemble_data, as_dataframe = False)
+#     ## Correct for multiple testing
+#     numtests = len(linear_regression_dict)
+#     if correction == 'sidak':
+#         alpha_corrected = (1 - (1 - alpha_old)**(1/numtests))
+#     elif correction == 'bonferroni':
+#         alpha_corrected = (1 - (alpha_old / numtests))
+#     ## Loop trough all linear regression outputs, check if pvalue < alpha_corrected
+#     ensemble_trends = {}
+#     no_trend = {}
+#     decreasing = {}
+#     increasing = {}
+#     for i in np.arange(0, len(linear_regression_dict)):
+#         if (linear_regression_dict[i]['pval'][1] < alpha_corrected) & (linear_regression_dict[i]['coef'][1] < 0):
+#             decreasing[i] = linear_regression_dict[i]
+#         elif (linear_regression_dict[i]['pval'][1] < alpha_corrected) & (linear_regression_dict[i]['coef'][1] > 0):
+#             increasing[i] = linear_regression_dict[i]
+#         else:
+#             no_trend[i] = linear_regression_dict[i]
+#     ensemble_trends = {'no trend': no_trend, 'decreasing': decreasing, 'increasing': increasing}
+#     return ensemble_trends
 
 
 def define_ensemble_trends_across_time(activations, z_threshold = None, x_bin_size = 1, analysis_type = 'max', 
@@ -897,7 +897,7 @@ def define_ensemble_trends_across_trials_legacy(activations, aligned_behavior, t
         return trends, binned_activations, slopes, tau
     
 
-def define_ensemble_trends_across_trials(act, behav, trial_type='forward', analysis='max', zscored=True, correction='sidak', alpha_old=0.05, **kwargs):
+def define_ensemble_trends_across_trials(act, behav, trial_type='all', analysis='max', zscored=True, correction='sidak', alpha_old=0.05, **kwargs):
     """ 
     Use Mann-Kendall test to determine if coordinated activity is increasing/decreasing across a session.
     Args:
@@ -920,6 +920,7 @@ def define_ensemble_trends_across_trials(act, behav, trial_type='forward', analy
     Returns:
         trends, binned_act, slopes, tau
     """
+
     if zscored:
         activity = zscore(act, nan_policy='omit', axis=1)
     else:
@@ -933,6 +934,7 @@ def define_ensemble_trends_across_trials(act, behav, trial_type='forward', analy
             trials = reverse_trials 
     elif trial_type == 'all':
         trials = np.unique(behav['trials'])
+        trials = trials[~pd.isna(trials)]
     else:
         print('Error! Must be one of forward, reverse, or all.')
     

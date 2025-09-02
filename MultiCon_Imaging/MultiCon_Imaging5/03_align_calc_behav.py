@@ -14,6 +14,7 @@ project_dir = 'MultiCon_Imaging'
 experiment_dir = 'MultiCon_Imaging5'
 minian_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/minian_results')
 output_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/output')
+mouse_info =  pd.read_csv(os.path.abspath(f'../../../{project_dir}/{experiment_dir}/maze_yml/mouse_info.csv'))
 mouse_list = ['mc44', 'mc46', 'mc48', 'mc49', 'mc51', 'mc52']
 session_type = 'YrA'
 
@@ -64,7 +65,9 @@ for mouse in mouse_list:
                                                     reward_two=aligned_behav.loc[0, 'reward_two'],
                                                     maze=aligned_behav.loc[0, 'maze'],
                                                     date=date,
-                                                    timestamp=timestamp))
+                                                    timestamp=timestamp,
+                                                    sex=mouse_info['Sex'][mouse_info['Mouse'] == mouse].values[0],
+                                                    group=mouse_info['Group'][mouse_info['Mouse'] == mouse].values[0]))
         cropped_calc = cropped_calc.reset_coords(names='animal', drop=True)
         ## Save cropped_calc as a netcdf file
         cropped_calc.to_netcdf(save_path)

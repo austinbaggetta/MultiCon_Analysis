@@ -26,7 +26,7 @@ save_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/output/beha
 if not os.path.exists(output_path):
     os.makedirs(output_path)
 cohort_name = 'mci6'
-mouse_list = [f'mc{x}' for x in np.arange(54, 61)]
+mouse_list = [f'mc{x}' for x in np.arange(54, 57)] + [f'mc{x}' for x in np.arange(58, 61)]
 str2match = "(mc[0-9]+)" ## Set str2match variable (regex for mouse name)
 ## Set relative path variable for circletrack behavior data
 csv_path = pjoin(behavior_path, "data/**/**/**/circle_track.csv")

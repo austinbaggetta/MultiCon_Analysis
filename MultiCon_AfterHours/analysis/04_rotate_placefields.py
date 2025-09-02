@@ -9,20 +9,20 @@ from scipy.stats import pearsonr, spearmanr
 
 sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
 import circletrack_behavior as ctb
-import place_cells as pc 
+import place_cells as pc
 
 ## Set parameters
 dataset = {}
 result_dict = {'mouse': [], 'session': [], 'rotation': [], 'r': [], 'p': []}
 dpath = os.path.abspath('../MultiCon_AfterHours/MultiCon_EEG1/output/aligned_minian')
 save_path = os.path.abspath('../MultiCon_AfterHours/MultiCon_EEG1/output/rotated_placefields/mc_EEG1_01/')
-feather_name = 'test.feat'
-mouse_dict = {'mc_EEG1_01': ['A1', 'A5']} ## set which sessions you will be comparing
+feather_name = '1_5_pearson_all.feat'
+mouse_dict = {'mc_EEG1_01': ['1', '5']} ## set which sessions you will be comparing
 degree_increment = 180 ## step for x,y position rotation
 forward = False ## whether or not to include only forward (correct) trials
 place_cells = True ## whether or not to include only place cells
 neuron_by_neuron = True ## whether to get the correlation between place fields
-ref_sess = 'A1' ## reference session
+ref_sess = '1' ## reference session
 alpha = 0.05
 nbins = 20
 

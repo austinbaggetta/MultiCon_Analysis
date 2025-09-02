@@ -8,7 +8,7 @@ from natsort import natsorted
 
 sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
 import circletrack_neural as ctn
-import place_cells as pc 
+import place_cells as pc
 
 behavior_path = os.path.abspath('../MultiCon_AfterHours/MultiCon_EEG1/output')
 mouse_dict = {'mc_EEG1_01': ['A1', 'A2', 'A3', 'A4', 'A5', 'B1', 'B2', 'B3', 'B4', 'B5',

@@ -254,7 +254,7 @@ def subset_correct_dir_and_running(sdata, correct_dir=True, only_running=True, l
     else:
         sess = sdata.copy()
 
-    x_pos, y_pos, _ = ctb.smooth_over_trials(sdata, lin_pos_col=lin_pos_col, filter_width=filter_width)
+    x_pos, y_pos, _ = ctb.smooth_over_trials(sess, lin_pos_col=lin_pos_col, filter_width=filter_width)
 
     x_cm, y_cm = ctb.convert_to_cm(x=x_pos, y=y_pos)
     if only_running:
@@ -335,3 +335,29 @@ def bin_in_time(da, bin_size=5, session_time=900, time_col='behav_t'):
     for bin in time_bins[:-1]:
         ar.append(da[:, (da[time_col] >= bin) & (da[time_col] < (bin + bin_size))])
     return ar
+
+
+def bin_angle_data(ar, bin_size=30, col='a_pos'):
+    """
+    Bin neural activity into average activity within an angle bin.
+    Args:
+        ar : xarray.DataArray
+            preprocessed calcium imaging activity
+        bin_size : int or float
+            size of your angle bin - by default 30 degrees
+        col : str
+            name of angle column, one of ['a_pos', 'lin_position']
+    Returns:
+        angle_ar : numpy.ndarray
+            matrix of average activity of each neuron in that angle bin
+    """
+    assert type(ar) == xr.DataArray
+    if col == 'a_pos':
+        angles = np.arange(0, 360, bin_size)
+    else:
+        print('Radians not yet supported!')
+    angle_ar = np.zeros((ar.shape[0], angles.shape[0])) ## neuron by angle 
+    for idx, angle in enumerate(angles):
+        loop_data = ar[:, (ar[col] >= angle) & (ar[col] < angle + bin_size)]
+        angle_ar[:, idx] = loop_data.mean(dim='frame')
+    return angle_ar

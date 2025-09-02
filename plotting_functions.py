@@ -11,7 +11,7 @@ import circletrack_behavior as ctb
 
 
 def custom_graph_template(x_title, y_title, template='simple_white', height=500, width=500, linewidth=1.5,
-                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=22, font_family='Arial', **kwargs):
+                          titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=26, font_family='Arial', **kwargs):
     """
     Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
     """
@@ -85,7 +85,7 @@ def create_pairwise_heatmap(data, index, column, value, graph, colorscale='Virid
 
 
 def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color='turquoise', chance_color='darkgrey', transition_color=['darkgrey'],
-                               marker_color='rgb(179,179,179)', plot_datapoints=True, expert_line=True, chance=True,
+                               marker_color='rgb(179,179,179)', symbols='circle', plot_datapoints=True, expert_line=True, chance=True, datapoint_type='lines',
                                plot_transitions=[5.5, 10.5, 15.5], **kwargs):
     """
     Creates a line plot of behavior variable of interest (rewards, percent_correct, etc.) over all days.
@@ -110,37 +110,37 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
     ## Create figure
     fig = custom_graph_template(**kwargs)
     ## Colors for each group
-    if ('group' in groupby_var) | ('group_two' in groupby_var) | ('group_three' in groupby_var):
+    if ('group' in groupby_var) | ('group_two' in groupby_var) | ('sex' in groupby_var) | ('maze' in groupby_var) | ('experimenter' in groupby_var):
         groups = np.unique(data[groupby_var[-1]])
         group_dict = {g:c for (g,c) in zip(groups, marker_color)}
+        symbol_dict = {g:s for (g,s) in zip(groups, symbols)}
         
     if plot_datapoints:
         ## Plot individual subjects
         for subject in np.unique(data['mouse']):
             data_sub = data.loc[data['mouse'] == subject].reset_index()
-            if ('group' in groupby_var) | ('group_two' in groupby_var) | ('group_three' in groupby_var):
+            if ('group' in groupby_var) | ('group_two' in groupby_var) | ('sex' in groupby_var) | ('maze' in groupby_var) | ('experimenter' in groupby_var):
                 subject_color = group_dict[data_sub.loc[0, groupby_var[-1]]]
                 legendgroup = data_sub.loc[0, groupby_var[-1]]
             else:
                 subject_color = marker_color
                 legendgroup = marker_color
             fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var], showlegend=False, legendgroup=legendgroup,
-                                    mode='lines', opacity=0.7, name=subject, line_color=subject_color, line_width=1))
-                                    #marker = dict(color=subject_color, line=dict(width = 1))))
+                                    mode=datapoint_type, opacity=0.5, name=subject, line_color=subject_color, line_width=1))
     ## Plot group average or multiple group averages
-    if ('group' in groupby_var) | ('group_two' in groupby_var) | ('group_three' in groupby_var):
+    if ('group' in groupby_var) | ('group_two' in groupby_var) | ('sex' in groupby_var) | ('maze' in groupby_var) | ('experimenter' in groupby_var):
         for group in np.unique(avg_data[groupby_var[-1]]):
             avg_sub = avg_data.loc[avg_data[groupby_var[-1]] == group]
             sem_sub = sem_data.loc[sem_data[groupby_var[-1]] == group]
             fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
-                                     mode='lines+markers', 
-                                     error_y = dict(type='data', array=sem_sub[y_var]), legendgroup=group,
-                                     line = dict(color=group_dict[group]), name=group, showlegend=True))
+                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=6.5,
+                                     error_y = dict(type='data', array=sem_sub[y_var]), legendgroup=group, 
+                                     line=dict(color=group_dict[group]), name=group, showlegend=True))
     else:
         fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
                                 mode='lines+markers', 
-                                error_y=dict(type='data', array=sem_data[y_var]),
-                                line=dict(color=avg_color), showlegend=False))
+                                error_y=dict(type='data', array=sem_data[y_var]), marker_size=6.5,
+                                line=dict(color=avg_color), showlegend=False, marker_symbol=symbols))
     ## Add dashed lines   
     if expert_line:
         fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)
@@ -551,7 +551,7 @@ def plot_spatial_footprints(A, unit_ids=None, threshold=0, base_color='gray', ma
     return fig
 
 
-def plot_ensemble_raster(bin_edges, rasters, ensemble_id, normalized=True, reward_positions=None, **kwargs):
+def plot_ensemble_0(bin_edges, rasters, ensemble_id, normalized=True, reward_positions=None, **kwargs):
     """
     Plots the activation strength within a bin across trials. Used after the ica.make_ensemble_raster function.
     Args:
