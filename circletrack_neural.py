@@ -316,6 +316,31 @@ def define_population_bursts(ar, min_len=3, zthresh=2, first_zscore=True, second
     return burst_start, burst_end
 
 
+def num_bursts_per_bin(burst_mid, time_bins, time_bin_num=15, normalize=False):
+    """
+    Determine number of bursts per bin.
+    Args:
+        burst_mid : np.ndarray
+            numpy array whose values are the frames where the midpoint of a burst occurred
+        time_bins : np.ndarray
+            numpy array whose values are the ends of each time bin (in frames)
+        time_bin_num : int
+            how many time bins there are
+        normalize : bool
+            whether to normalize the number of bursts in each bin by the total number of bursts; by default False
+    Returns:
+        num_bursts_bin : np.ndarray
+            number or fraction of bursts in each time bin
+    """
+    num_bursts_bin = np.zeros(time_bin_num)
+    for idx, (start_bin, end_bin) in enumerate(zip(time_bins[:-1], time_bins[1:])):
+        num_bursts_bin[idx] = burst_mid[(burst_mid > start_bin) & (burst_mid <= end_bin)].shape[0]
+    if normalize:
+        total_bursts = burst_mid.shape[0]
+        num_bursts_bin = num_bursts_bin / total_bursts
+    return num_bursts_bin
+
+
 def bin_in_time(da, bin_size=5, session_time=900, time_col='behav_t'):
     """
     Bins preprocessed xarray.DataArray based on behavior time.
