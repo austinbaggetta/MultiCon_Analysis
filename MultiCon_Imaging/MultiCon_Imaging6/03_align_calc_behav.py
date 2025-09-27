@@ -16,8 +16,8 @@ minian_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/minian_r
 output_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/output')
 mouse_info =  pd.read_csv(os.path.abspath(f'../../../{project_dir}/{experiment_dir}/maze_yml/mouse_info.csv'))
 mouse_list = ['mc54', 'mc55', 'mc56', 'mc58', 'mc59', 'mc60']
-mouse_list = ['mc55']
-session_type = 'C'
+mouse_list = ['mc56', 'mc58']
+session_type = 'S'
 
 for mouse in mouse_list:
     mpath = os.path.abspath(pjoin(minian_path, mouse))

@@ -16,9 +16,8 @@ import place_cells as pc
 project_dir = 'MultiCon_Imaging'
 experiment_dir = 'MultiCon_Imaging5'
 mouse_list = ['mc44', 'mc46', 'mc48', 'mc49', 'mc51', 'mc52']
-mouse_list = ['mc48', 'mc49', 'mc51', 'mc52']
-dpath = f'../{project_dir}/{experiment_dir}/output/aligned_minian/'
-spath = f'../{project_dir}/{experiment_dir}/output/aligned_place_cells/'
+dpath = f'../../../{project_dir}/{experiment_dir}/output/aligned_minian/'
+spath = f'../../../{project_dir}/{experiment_dir}/output/aligned_place_cells/'
 data_type = 'S'
 only_running = True
 correct_dir = True
