@@ -379,7 +379,7 @@ def label_lick_trials(aligned_behavior, lick_tmp, trials):
     return lick_data
 
 
-def get_forward_reverse_trials(behav, percent_correct=60):
+def get_forward_reverse_trials(behav, percent_correct=63):
     """
     After determining number of trials, separate trials into trials in the forward (correct) direction or reverse (incorrect) direction.
     Args:
