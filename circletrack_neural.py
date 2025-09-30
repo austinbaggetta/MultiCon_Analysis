@@ -228,7 +228,7 @@ def bootstrap_z_values(val, shuffled_val):
     return z_values
 
 
-def subset_correct_dir_and_running(sdata, correct_dir=True, only_running=True, lin_pos_col='a_pos', velocity_thresh=10, filter_width=2):
+def subset_correct_dir_and_running(sdata, correct_dir=True, only_running=True, lin_pos_col='lin_position', velocity_thresh=10, filter_width=2):
     """ 
     Function to subset data based on whether mouse is moving in the correct direction or not and whether
     the mouse is running or not.
