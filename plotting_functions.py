@@ -23,7 +23,7 @@ def custom_graph_template(x_title, y_title, template='simple_white', height=500,
         'x':0.5,
         'xanchor': 'center',
         'yanchor': 'top'})
-    fig.update_annotations(font_size=font_size)
+    fig.update_annotations(font_size=font_size+3)
     fig.update_layout(template=template, height=height, width=width, font=dict(size=font_size), font_family=font_family)
     if shared_x:
         fig.update_xaxes(matches='x')
