@@ -531,6 +531,21 @@ def bin_data(data, bin_size=2):
     return [np.nanmean(bin) for bin in binned if bin.size > 0]
 
 
+def rewards_across_trials(behav):
+    """
+    Calculate the number of rewards across trials.
+
+    Returns:
+        num_rewards : numpy.ndarray
+            array where each value is the number of rewards earned on a trial
+    """
+    num_rewards = []
+    for trial in behav['trials'].unique():
+        tdata = behav[behav['trials'] == trial]
+        num_rewards.append(np.sum(tdata['water']))
+    return np.array(num_rewards)
+
+
 def lick_accuracy(df, port_list, lick_threshold, by_trials=False, to_percent=True):
     """
     Used to calculate lick accuracy of a given lick within a bout of licks.
