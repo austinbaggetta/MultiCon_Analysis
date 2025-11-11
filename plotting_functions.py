@@ -671,3 +671,21 @@ def preprocessed_plots(data_out, angle_type='degrees', position_color='darkgrey'
     if save_path is not None:
         fig.write_html(os.path.join(save_path, f"{data_out['animal'].unique()[0]}_{data_out['session_two'].unique()[0]}_preprocessed.html"))
     return fig
+
+
+def plot_groups_shaded_error(df, yvar, x_data, group_list, colors_dict, error_color, **kwargs):
+    """ 
+    Plot the average of some yvar across time/trials for given groups.
+    """
+    fig = custom_graph_template(**kwargs)
+    for group in group_list:
+        gdata = df[df['group'] == group]
+        upper = gdata[yvar]['mean'] + gdata[yvar]['sem']
+        lower = gdata[yvar]['mean'] - gdata[yvar]['sem']
+        fig.add_trace(go.Scatter(x=x_data, y=gdata[yvar]['mean'], mode='lines', legendgroup=group,
+                                name=group, line_color=colors_dict[group]))
+        fig.add_trace(go.Scatter(x=x_data, y=upper, mode='lines', marker=dict(color=error_color[group]),
+                                 name='Upper Bound', line=dict(width=0), showlegend=False, legendgroup=group))
+        fig.add_trace(go.Scatter(x=x_data, y=lower, mode='lines', marker=dict(color=error_color[group]), legendgroup=group,
+                                 name='Lower Bound', line=dict(width=0), showlegend=False, fillcolor=error_color[group], fill='tonexty'))
+    return fig
