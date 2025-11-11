@@ -7,7 +7,7 @@ from tqdm import tqdm
 from natsort import natsorted
 import re
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_neural as ctn
 
 project_dir = 'MultiCon_Imaging'
@@ -15,8 +15,8 @@ experiment_dir = 'MultiCon_Imaging5'
 minian_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/minian_results')
 output_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/output')
 mouse_info =  pd.read_csv(os.path.abspath(f'../../../{project_dir}/{experiment_dir}/maze_yml/mouse_info.csv'))
-mouse_list = ['mc44', 'mc46', 'mc48', 'mc49', 'mc51', 'mc52']
-session_type = 'YrA'
+mouse_list = ['mc44', 'mc46', 'mc49', 'mc51', 'mc52']
+session_type = 'S'
 
 for mouse in mouse_list:
     mpath = os.path.abspath(pjoin(minian_path, mouse))
@@ -38,7 +38,7 @@ for mouse in mouse_list:
         if not os.path.exists(spath):
             os.makedirs(spath)
 
-        file_name = os.listdir(pjoin(output_path, f'behav/{mouse}'))[idx]
+        file_name = natsorted(os.listdir(pjoin(output_path, f'behav/{mouse}')))[idx]
         behav = pd.read_feather(pjoin(output_path, f'behav/{mouse}/{file_name}'))
         save_path = pjoin(spath, f'{mouse}_{session_type}_{idx+1}.nc')
         ## Select session
@@ -69,6 +69,8 @@ for mouse in mouse_list:
                                                     sex=mouse_info['Sex'][mouse_info['Mouse'] == mouse].values[0],
                                                     group=mouse_info['Group'][mouse_info['Mouse'] == mouse].values[0]))
         cropped_calc = cropped_calc.reset_coords(names='animal', drop=True)
+        ## Remove the first five seconds of the behavior, since the mouse is getting dropped into the maze then.
+        cropped_calc = cropped_calc[:, cropped_calc['behav_t'] >= 5]
         ## Save cropped_calc as a netcdf file
         cropped_calc.to_netcdf(save_path)
 # %%

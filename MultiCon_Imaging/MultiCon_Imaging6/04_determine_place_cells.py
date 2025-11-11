@@ -8,16 +8,14 @@ from tqdm import tqdm
 from os.path import join as pjoin
 from natsort import natsorted
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_neural as ctn
 import circletrack_behavior as ctb
 import place_cells as pc
 
 project_dir = 'MultiCon_Imaging'
-# experiment_dir = 'MultiCon_Imaging6'
-# mouse_list = ['mc54', 'mc55', 'mc56', 'mc58', 'mc59', 'mc60']
-experiment_dir = 'MultiCon_Imaging5'
-mouse_list = ['mc44', 'mc46', 'mc48']
+experiment_dir = 'MultiCon_Imaging6'
+mouse_list = ['mc54', 'mc55', 'mc56', 'mc60'] # need to add mc58 and mc59
 dpath = f'../../../{project_dir}/{experiment_dir}/output/aligned_minian/'
 spath = f'../../../{project_dir}/{experiment_dir}/output/aligned_place_cells/'
 data_type = 'S'
@@ -27,13 +25,13 @@ smooth = False
 binarized = False
 velocity_thresh = 10
 bin_size = 0.16
-nshuffles = 1000
+nshuffles = 500
 percentile = 95
 min_event_amount = 0.2
 # %%
 for mouse in tqdm(mouse_list):
     mpath = pjoin(dpath, f'{mouse}/{data_type}')
-    for session in os.listdir(mpath):
+    for session in natsorted(os.listdir(mpath)):
         if (mouse == 'mc56') & (session == f'mc56_{data_type}_1.nc'):
             pass
         else:
