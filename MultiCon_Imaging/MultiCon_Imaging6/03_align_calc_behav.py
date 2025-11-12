@@ -15,9 +15,8 @@ experiment_dir = 'MultiCon_Imaging6'
 minian_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/minian_results')
 output_path = os.path.abspath(f'../../../{project_dir}/{experiment_dir}/output')
 mouse_info =  pd.read_csv(os.path.abspath(f'../../../{project_dir}/{experiment_dir}/maze_yml/mouse_info.csv'))
-mouse_list = ['mc54', 'mc55', 'mc56', 'mc58', 'mc60'] ## need to re-add mc58 and mc59
-mouse_list = ['mc58']
-session_type = 'S'
+mouse_list = ['mc54', 'mc55', 'mc56', 'mc58', 'mc59', 'mc60'] 
+session_type = 'YrA'
 
 for mouse in mouse_list:
     mpath = os.path.abspath(pjoin(minian_path, mouse))
