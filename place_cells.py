@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import xarray as xr
 from os.path import join as pjoin
+from sklearn.metrics import mutual_info_score
 from scipy.ndimage.filters import gaussian_filter
 from scipy.stats import pearsonr, zscore, spearmanr
 from scipy.ndimage import generic_filter
@@ -300,3 +301,26 @@ def shuffle_stability_metrics(ar, bin_size, lin_pos_col='lin_position', nshuffle
         shuffled_ar_first_second[shuffle, :] = first_second_half_stability(ar_new, bin_size=bin_size, lin_pos_col='reordered_pos')
         shuffled_ar_odd_even[shuffle, :] = odd_even_stability(ar_new, bin_size=bin_size, lin_pos_col='reordered_pos')
     return shuffled_ar_first_second, shuffled_ar_first_second
+
+
+def shuffle_mutual_info(ar, bin_size, lin_pos_col='lin_position', nshuffles=500, seed=24601):
+    np.random.seed(seed)
+    ## Preassign arrays for spatial stability outputs
+    shuffled_mutual = np.zeros((nshuffles, ar.shape[0]))
+    for shuffle in np.arange(0, nshuffles):
+        ## Shift position data forward by a random number of frames
+        shuffled_data = np.array(())
+        for trial in np.unique(ar['trials']):
+            position = ar[lin_pos_col][ar['trials'] == trial].values
+            random_shift = np.random.randint(0, position.shape[0])  
+            rolled_position = np.roll(position, random_shift)
+            shuffled_data = np.concatenate((shuffled_data, rolled_position))
+        ## Calculate trial stability of cells with the reordered positions
+        ar_new = ar.copy()
+        ar_new = ar_new.assign_coords(reordered_pos=('frame', shuffled_data))
+        population_activity, _, bins = spatial_activity(ar_new.values, ar_new['reordered_pos'].values, bin_size=bin_size, binarized=False)
+        ## Calculate mutual information
+        discrete_bins = np.arange(0, bins.shape[0]-1)
+        mi = [mutual_info_score((population_activity[:, uid] * 100).astype(int), discrete_bins) for uid in np.arange(0, population_activity.shape[1])]
+        shuffled_mutual[shuffle, :] = mi
+    return shuffled_mutual
