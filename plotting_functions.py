@@ -10,14 +10,18 @@ import os
 import circletrack_behavior as ctb
 
 
-def custom_graph_template(x_title, y_title, template='simple_white', height=500, width=500, linewidth=1.5,
+def custom_graph_template(x_title, y_title, template='simple_white', height=500, width=500, linewidth=1.5, master_axes=False,
                           titles=[''], rows=1, columns=1, shared_y=False, shared_x=False, font_size=26, font_family='Arial', **kwargs):
     """
     Used to make a cohesive graph type. In most functions, these arguments are supplied through **kwargs.
     """
-    fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, **kwargs)
-    fig.update_yaxes(title=y_title, linewidth=linewidth)
-    fig.update_xaxes(title=x_title, linewidth=linewidth)
+    if master_axes:
+        fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y,
+                            x_title=x_title, y_title=y_title, **kwargs)
+    else:
+        fig = make_subplots(rows=rows, cols=columns, subplot_titles=titles, shared_yaxes=shared_y, **kwargs)
+        fig.update_yaxes(title=y_title, linewidth=linewidth)
+        fig.update_xaxes(title=x_title, linewidth=linewidth)
     fig.update_layout(title={
         'y':0.9,
         'x':0.5,
