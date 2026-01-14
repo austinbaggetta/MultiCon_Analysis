@@ -28,6 +28,7 @@ bin_size = 0.16
 nshuffles = 500
 percentile = 95
 min_event_amount = 0.2
+min_trials = None ## lowest number of trials a mouse ran on day 16 is 27 trials, which was a two-context mouse
 # %%
 for mouse in tqdm(mouse_list):
     mpath = pjoin(dpath, f'{mouse}/{data_type}')
@@ -35,15 +36,21 @@ for mouse in tqdm(mouse_list):
         if (mouse == 'mc56') & (session == f'mc56_{data_type}_1.nc'):
             pass
         else:
+            print(session)
             save_path = pjoin(spath, f'{mouse}/{data_type}')
             sdata = xr.open_dataset(pjoin(mpath, session))[data_type]
             num_neurons = sdata.shape[0]
             minimum_act_bool = pc.minimum_activity_level(sdata, minimum_event_amount=min_event_amount, bin_size_seconds=60, fps=30, func=np.sum, binarized=0)
 
-            if smooth:
-                smoothed_data = ctn.moving_average_xarray(sdata, ksize=8) 
+            if min_trials is not None:
+                min_data = sdata[:, sdata['trials'] <= min_trials]
             else:
-                smoothed_data = sdata.copy()
+                min_data = sdata.copy()
+
+            if smooth:
+                smoothed_data = ctn.moving_average_xarray(min_data, ksize=8) 
+            else:
+                smoothed_data = min_data.copy()
 
             neural_data, position_data = ctn.subset_correct_dir_and_running(smoothed_data, correct_dir=correct_dir, only_running=only_running, 
                                                                             velocity_thresh=velocity_thresh)
