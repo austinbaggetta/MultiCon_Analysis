@@ -1,19 +1,50 @@
 import os
+import dask
 import pickle
-from os.path import isdir
-from os.path import join as pjoin
+import itertools
 import numpy as np
 import pandas as pd
 import xarray as xr
+from os.path import isdir
+from os.path import join as pjoin
+from dask.diagnostics import ProgressBar
 from scipy.ndimage import gaussian_filter, label
 from skimage.filters import threshold_otsu
 from scipy.stats import pearsonr, zscore, spearmanr
 from scipy.ndimage import convolve
-import itertools
+from numpy.random import RandomState, SeedSequence, MT19937
 ## Austin's custom .py files
 import circletrack_behavior as ctb
 import pca_ica as ica
 import place_cells as pc
+
+
+def set_group(mouse, control_mice):
+    return 'Two-context' if mouse in control_mice else 'Multi-context'
+
+
+def set_sex(mouse, male_mice):
+    return 'Male' if mouse in male_mice else 'Female'
+
+
+def mouse_indices(mouse, idx):
+    if (mouse == 'mc42') & (idx > 14):
+        idx += 1
+    elif (mouse == 'mc43') & (idx > 11):
+        idx += 1
+    elif (mouse == 'mc44') & (idx > 7):
+        idx += 1
+    elif (mouse == 'mc46') & (idx > 9):
+        idx += 1
+    elif (mouse == 'mc52') & (idx > 2):
+        idx += 1
+    elif (mouse == 'mc55') & (idx > 2):
+        idx += 1
+    elif (mouse == 'mc61') & (idx > 15):
+        idx += 2
+    elif (mouse == 'mc61') & (idx > 14):
+        idx += 1
+    return idx
 
 
 def get_seconds(time_str, character='_'):
@@ -386,3 +417,177 @@ def bin_angle_data(ar, bin_size=30, col='a_pos'):
         loop_data = ar[:, (ar[col] >= angle) & (ar[col] < angle + bin_size)]
         angle_ar[:, idx] = loop_data.mean(dim='frame')
     return angle_ar
+
+## Functions for determining neurons modulated by reward
+def reward_activity(act, correct_size, window_size, reward_one, reward_two):
+    ## Pre-allocate for increased efficiency
+    windowed_data = np.empty((act.shape[0], correct_size, 2))
+    windowed_data.fill(np.nan)
+    windowed_sem = np.empty((act.shape[0], correct_size, 2))
+    windowed_sem.fill(np.nan)
+    rw_pre = np.empty((act.shape[0], 2))
+    rw_pre.fill(np.nan)
+    rw_post = np.empty((act.shape[0], 2))
+    rw_post.fill(np.nan)
+
+    rewards_one = act[:, (act['water']) & (act['lick_port'] == reward_one)]
+    rewards_two = act[:, (act['water']) & (act['lick_port'] == reward_two)]
+    for reward_idx in [0, 1]: ## only two rewards, so can use this to index the 3rd dimension
+        if reward_idx == 0:
+            data = rewards_one.copy()
+            rw_one_array = np.empty((data.shape[1], correct_size, data.shape[0]))
+            rw_one_array.fill(np.nan)
+        else:
+            data = rewards_two.copy()
+            rw_two_array = np.empty((data.shape[1], correct_size, data.shape[0]))
+            rw_two_array.fill(np.nan)
+
+        for unit in np.arange(0, data.shape[0]):
+            nan_array = np.empty((data.shape[1], correct_size))
+            nan_array.fill(np.nan)
+            if data.shape[1] == 0: ## take care of edge cases where there are no rewards at a port
+                windowed_data[:, :, reward_idx] = np.nan
+                windowed_sem[:, :, reward_idx] = np.nan
+            else:
+                for idx in np.arange(0, data.shape[1]):
+                    udata = act[unit, :]
+                    d = udata[(udata['frame'] >= data[:, idx]['frame'] - window_size) & (udata['frame'] <= data[:, idx]['frame'] + window_size)]
+                    
+                    if d.shape[0] != correct_size: ## account for edge cases where rewards happen at the beginning or end
+                        if any(d['frame'].values < 1000): ## if it happens at the beginning of the session
+                            nan_array[idx, 0:correct_size - d.shape[0]] = 0 
+                            nan_array[idx, correct_size - d.shape[0]:] = d.values
+                        else:
+                            nan_array[idx, 0:d.shape[0]] = d.values
+                            nan_array[idx, d.shape[0]:] = 0
+                    else:
+                        nan_array[idx] = d.values
+
+                    if reward_idx == 0:
+                        rw_one_array[:, :, unit] = nan_array 
+                    else:
+                        rw_two_array[:, :, unit] = nan_array
+                    
+                    avg_response = np.mean(nan_array, axis=0)
+                    if nan_array.shape[0] > 1: ## only calculate SEM if greater than 1 reward
+                        sem = np.std(nan_array, axis=0, ddof=1) / data.shape[1]
+                    else:
+                        sem = np.nan
+                windowed_data[unit, :, reward_idx] = avg_response
+                windowed_sem[unit, :, reward_idx] = sem
+        ## Pre-post data
+        rw_pre[:, reward_idx] = np.mean(windowed_data[:, 0:int(np.round(correct_size / 2)), reward_idx], axis=1)
+        rw_post[:, reward_idx] = np.mean(windowed_data[:, int(np.round(correct_size / 2)):, reward_idx], axis=1)
+    return windowed_data, windowed_sem, rw_pre, rw_post, rw_one_array, rw_two_array
+
+
+def pre_post_diff(pre: np.array, post: np.array, sim: int = None):
+    if sim is not None:
+        output = {'difference': [], 'dim': [], 'unit': [], 'sim': []}
+    else:
+        output = {'difference': [], 'dim': [], 'unit': []}
+    assert pre.shape[1] == post.shape[1]
+    for uid in np.arange(0, post.shape[0]):
+        for rw_dim in np.arange(0, post.shape[1]):
+            output['difference'].append(post[uid, rw_dim] - pre[uid, rw_dim])
+            output['dim'].append(rw_dim)
+            output['unit'].append(uid)
+
+            if sim is not None:
+                output['sim'].append(sim)
+    return output
+
+
+@dask.delayed
+def one_shuffle_rw_diff(data, sim, correct_size, window_size, reward_one, reward_two):
+    rand_shift = np.random.randint(30, data.shape[1]) ## shifts anywhere from 1s to the entire session
+    shuff_data = xr.apply_ufunc(
+            np.roll,
+            data.chunk({'frame': -1, 'unit_id': 50}),
+            input_core_dims=[['frame']],
+            output_core_dims=[['frame']],
+            kwargs={'shift': rand_shift, 'axis': 1},
+            dask='parallelized'
+        ).compute()
+
+    ## Compute average activity before and after water delivery for both reward ports
+    wa, ws, rw_pre, rw_post, rw_one_act, rw_two_act = reward_activity(shuff_data, correct_size=correct_size, window_size=window_size, 
+                                                                      reward_one=reward_one, reward_two=reward_two)
+
+    df = pd.DataFrame(pre_post_diff(
+        pre=rw_pre,
+        post=rw_post,
+        sim=sim
+    ))
+    return df
+
+
+def compute_shuffled_rw_diff(ar: np.array, correct_size: int, window_size: int, num_simulations: int = 500, verbose: bool = True):
+    delayed_res = [
+        one_shuffle_rw_diff(
+            data=ar,
+            correct_size=correct_size,
+            window_size=window_size,
+            sim=sim,
+            reward_one=ar.attrs['reward_one'],
+            reward_two=ar.attrs['reward_two']
+        ) for sim in np.arange(num_simulations)
+    ]
+
+    if verbose:
+        with ProgressBar():
+            sim_metrics = dask.compute(*delayed_res)
+        sim_metrics_df = pd.concat(sim_metrics, ignore_index=True)
+    return sim_metrics_df
+
+
+def cell_cell_correlations(act_bin, corr_metric: str = 'spearman', diag_zero: bool = True):
+    if corr_metric == 'pearson':
+        cor_mat = np.corrcoef(act_bin) ## uses Pearson's correlation
+    elif corr_metric == 'spearman':
+        cor_mat = spearmanr(act_bin, axis=1).statistic
+    else:
+        raise Exception('Correlation test not supported!')
+
+    if diag_zero:
+        np.fill_diagonal(cor_mat, 0)
+    return cor_mat
+
+
+def shuffle_cell_cell_correlations(d, seeds, corr_metric: str = 'spearman', nshuffles: int = 500, diag_zero: bool = True):
+    """ 
+    Roll each neuron's time series individually to shuffle activity matrix and break correlation structure
+    to create a null distribution of Pearson's correlation values.
+    Args:
+        d : numpy.ndarray
+            Neural activity matrix. Can be binned previously or not.
+        seeds : numpy.ndarray
+            an array of equal to the number of shuffles to seed the random number generator reproducibly
+        corr_metric : str
+            determines which correlation coefficient is computed; one of pearson, spearman
+        nshuffles : int
+            number of shuffles for your null distribution
+        diag_zero : bool
+            whether or not to set the shuffled correlation matrix to zero. Should always be true.
+    Returns:
+        shuff_mat : np.ndarray
+            a numpy array in whose shape is (num_neurons, num_neurons, nshuffles) and whose values
+            are the correlation value between those neurons' timeseries for each shuffle
+    """
+    shuff_mat = np.zeros((d.shape[0], d.shape[0], nshuffles))
+    for shuff in np.arange(0, nshuffles):
+        rs = RandomState(MT19937(SeedSequence(seeds[shuff])))
+        shuff_bin = d.copy()
+        for uid in np.arange(0, shuff_bin.shape[0]):
+            shuff_bin[uid, :] = np.roll(shuff_bin[uid, :], shift=rs.randint(5, shuff_bin.shape[1])) ## shifts by at least 1 second if binned as 200ms
+    
+        if corr_metric == 'pearson':
+            ## Pearson's correlation of every cell's binned activity to every other cell's activity
+            shuff_cor_mat = np.corrcoef(shuff_bin)
+        elif corr_metric == 'spearman':
+            shuff_cor_mat = spearmanr(shuff_bin, axis=1).statistic
+        else:
+            raise Exception('Correlation test not supported!')
+        
+        shuff_mat[:, :, shuff] = shuff_cor_mat
+    return shuff_mat
