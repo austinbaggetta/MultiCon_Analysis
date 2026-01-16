@@ -137,23 +137,25 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
             avg_sub = avg_data.loc[avg_data[groupby_var[-1]] == group]
             sem_sub = sem_data.loc[sem_data[groupby_var[-1]] == group]
             fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
-                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=6.5,
-                                     error_y = dict(type='data', array=sem_sub[y_var]), legendgroup=group, 
-                                     line=dict(color=group_dict[group]), name=group, showlegend=True))
+                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=6,
+                                     error_y = dict(type='data', array=sem_sub[y_var], thickness=2), legendgroup=group, 
+                                     line=dict(color=group_dict[group]), name=group, showlegend=True,
+                                     marker=dict(line=dict(width=1.5)), line_width=2.5))
     else:
         fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
                                 mode='lines+markers', 
-                                error_y=dict(type='data', array=sem_data[y_var]), marker_size=6.5,
-                                line=dict(color=avg_color), showlegend=False, marker_symbol=symbols))
+                                error_y=dict(type='data', array=sem_data[y_var], thickness=2), marker_size=6,
+                                line=dict(color=avg_color), showlegend=False, marker_symbol=symbols,
+                                marker=dict(line=dict(width=1.5)), line_width=2.5))
     ## Add dashed lines   
     if expert_line:
-        fig.add_hline(y=75, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)
+        fig.add_hline(y=75, line_width=2, line_dash='dash', line_color=chance_color, opacity=1)
     if chance:
-        fig.add_hline(y=25, line_width=1, line_dash='dash', line_color=chance_color, opacity=1)
+        fig.add_hline(y=25, line_width=2, line_dash='dash', line_color=chance_color, opacity=1)
     ## Plot transitions
     if plot_transitions is not None:
         for idx, value in enumerate(plot_transitions):
-            fig.add_vline(x=value, line_width=1, line_dash='dash', line_color=transition_color[idx], opacity=1)
+            fig.add_vline(x=value, line_width=2, line_dash='dash', line_color=transition_color[idx], opacity=1)
     return fig
 
 
