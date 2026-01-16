@@ -570,39 +570,39 @@ def lick_accuracy(df, port_list, lick_threshold, by_trials=False, to_percent=Tru
     if by_trials:
         percent_correct = []
         for trial in np.unique(df['trials']):
-                count = 0
-                lick_port = np.nan
-                trial_behav = df[df['trials'] == trial]
-                licks = trial_behav[trial_behav['lick_port'] != -1].reset_index(drop=True)
-                if licks.empty:
+            count = 0
+            lick_port = np.nan
+            trial_behav = df[df['trials'] == trial]
+            licks = trial_behav[trial_behav['lick_port'] != -1].reset_index(drop=True)
+            if licks.empty:
+                percent_correct.append(np.nan)
+            else:
+                for idx, _ in licks.iterrows():
+                    if lick_port != licks.loc[idx, 'lick_port']:
+                        count = 1
+                    else:
+                        count += 1
+                    
+                    if count < lick_threshold - 1:
+                        licks.loc[idx, 'threshold_reached'] = False
+                    elif count == lick_threshold:
+                        licks.loc[idx, 'threshold_reached'] = True
+                    else:
+                        licks.loc[idx, 'threshold_reached'] = False
+
+                    lick_port =  licks.loc[idx, 'lick_port']
+
+                count_licks = licks[['lick_port', 'threshold_reached']].groupby(['lick_port'], as_index=False).agg({'threshold_reached': 'sum'})
+                if count_licks['threshold_reached'].dropna().sum() == 0:
                     percent_correct.append(np.nan)
                 else:
-                    for idx, _ in licks.iterrows():
-                        if lick_port != licks.loc[idx, 'lick_port']:
-                            count = 1
-                        else:
-                            count += 1
-                        
-                        if count < lick_threshold - 1:
-                            licks.loc[idx, 'threshold_reached'] = False
-                        elif count == lick_threshold:
-                            licks.loc[idx, 'threshold_reached'] = True
-                        else:
-                            licks.loc[idx, 'threshold_reached'] = False
-
-                        lick_port =  licks.loc[idx, 'lick_port']
-
-                    count_licks = licks[['lick_port', 'threshold_reached']].groupby(['lick_port'], as_index=False).agg({'threshold_reached': 'sum'})
-                    if count_licks['threshold_reached'].dropna().sum() == 0:
-                        percent_correct.append(np.nan)
-                    else:
-                        reward_licks = 0
-                        for reward_port in port_list:
-                            try:
-                                reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]])
-                            except:
-                                pass
-                        percent_correct.append(reward_licks / count_licks['threshold_reached'].dropna().sum() * scale_factor)
+                    reward_licks = 0
+                    for reward_port in port_list:
+                        try:
+                            reward_licks = np.nansum([reward_licks, count_licks['threshold_reached'][count_licks['lick_port'] == reward_port].values[0]])
+                        except:
+                            pass
+                    percent_correct.append(reward_licks / count_licks['threshold_reached'].dropna().sum() * scale_factor)
                 
     else:
         count = 0
