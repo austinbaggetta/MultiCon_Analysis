@@ -5,13 +5,14 @@ import itertools
 import numpy as np
 import pandas as pd
 import xarray as xr
+import dask.array as da
 from os.path import isdir
 from os.path import join as pjoin
 from dask.diagnostics import ProgressBar
 from scipy.ndimage import gaussian_filter, label
 from skimage.filters import threshold_otsu
 from scipy.stats import pearsonr, zscore, spearmanr
-from scipy.ndimage import convolve
+from scipy.ndimage import convolve, center_of_mass
 from numpy.random import RandomState, SeedSequence, MT19937
 ## Austin's custom .py files
 import circletrack_behavior as ctb
@@ -591,3 +592,81 @@ def shuffle_cell_cell_correlations(d, seeds, corr_metric: str = 'spearman', nshu
         
         shuff_mat[:, :, shuff] = shuff_cor_mat
     return shuff_mat
+
+
+def qc_matrix(ar, threshold=True):
+    """
+    Perform quality control on the cell activity matrix. Subsets the unit_id dimension to include
+    only neurons that passed the Mann-Kendall trend test performed previously (passed_qc).
+    Args:
+        ar : xarray.DataArray
+            session data
+        threshold : bool
+            whether or not to calculate the otsu threshold to set values below this to zero. 
+            By default True. Should only be used for S matrix (deconvolved events)
+    Returns:
+        ar : xarray.DataArray
+            session data
+    """
+    ar = ar[ar['passed_qc'], :] ## coordinate that was assigned from qc_units file
+    if threshold:
+        for uid in np.arange(ar.shape[0]):
+            single_neuron_thresh = calculate_otsu_thresh(ar[uid, :])
+            ar[uid, ar[uid, :] <= (single_neuron_thresh / 2)] = 0 ## set values below the otsu threshold / 2 to zero
+    return ar
+
+
+def centroid(A: xr.DataArray) -> pd.DataFrame:
+    """
+    Compute centroids of spatial footprint of each cell. From Minian documentation.
+
+    Parameters
+    ----------
+    A : xr.DataArray
+        Input spatial footprints.
+    verbose : bool, optional
+        Whether to print message and progress bar. By default `False`.
+
+    Returns
+    -------
+    cents_df : pd.DataFrame
+        Centroid of spatial footprints for each cell. Has columns "unit_id",
+        "height", "width" and any other additional metadata dimension.
+    """
+
+    def rel_cent(im):
+        im_nan = np.isnan(im)
+        if im_nan.all():
+            return np.array([np.nan, np.nan])
+        if im_nan.any():
+            im = np.nan_to_num(im)
+        cent = np.array(center_of_mass(im))
+        return cent / im.shape
+
+    gu_rel_cent = da.gufunc(
+        rel_cent,
+        signature="(h,w)->(d)",
+        output_dtypes=float,
+        output_sizes=dict(d=2),
+        vectorize=True,
+    )
+    cents = xr.apply_ufunc(
+        gu_rel_cent,
+        A.chunk(dict(height=-1, width=-1)),
+        input_core_dims=[["height", "width"]],
+        output_core_dims=[["dim"]],
+        dask="allowed",
+    ).assign_coords(dim=["height", "width"])
+    cents_df = (
+        cents.rename("cents")
+        .to_series()
+        .dropna()
+        .unstack("dim")
+        .rename_axis(None, axis="columns")
+        .reset_index()
+    )
+    h_rg = (A.coords["height"].min().values, A.coords["height"].max().values)
+    w_rg = (A.coords["width"].min().values, A.coords["width"].max().values)
+    cents_df["height"] = cents_df["height"] * (h_rg[1] - h_rg[0]) + h_rg[0]
+    cents_df["width"] = cents_df["width"] * (w_rg[1] - w_rg[0]) + w_rg[0]
+    return cents_df
