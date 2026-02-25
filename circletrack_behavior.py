@@ -531,6 +531,16 @@ def bin_data(data, bin_size=2):
     return [np.nanmean(bin) for bin in binned if bin.size > 0]
 
 
+def bin_behavior_in_time(data, bin_size_seconds, fps=30, func=np.mean):
+    if type(data) is not np.ndarray:
+        data = np.asarray(data)
+    samples = bin_size_seconds * fps
+    bins = np.arange(samples, data.shape[0], samples).astype(int)
+    binned = np.split(data, bins, axis=0)
+    pos = [func(bin) for bin in binned]
+    return np.asarray(pos)
+
+
 def rewards_across_trials(behav):
     """
     Calculate the number of rewards across trials.
