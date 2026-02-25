@@ -111,9 +111,25 @@ def make_place_field(neural_data, two_dim=True, binarize=False, **kwargs):
         return pf, x_edges
 
 
-def spatial_activity(neural_data, position_data, bin_size, binarized=True):
+def spatial_activity(neural_data, position_data, bin_size, binarized=True, fps=None):
     """
     Returns the number of events of all cells across spatial bins that can then be normalized by occupancy. Position_data is linearized position.
+    Args:
+        neural_data : xarray.DataArray
+        position_data : numpy.ndarray
+        bin_size : size of spatial bins
+        binarized : bool
+            whether to binarize calcium events or not
+        fps : int 
+            frames per second - your sampling rate for miniscope recordings
+            if not None, will normalize occupancy by fps to convert occupancy to seconds
+    Returns:
+        population_activity : numpy.ndarray
+            spatial bin x cells; number of events in each bin
+        occupancy : numpy.ndarray
+            amount of time spent in each spatial bin. if fps is not None, in seconds. Else in frames.
+        bins : numpy.ndarray
+            bin edges used for calculating spatial bins
     """
     bins = ctb.calculate_bins(x=position_data, bin_size=bin_size)
     population_activity = np.zeros((len(bins)-1, neural_data.shape[0]))
@@ -125,13 +141,28 @@ def spatial_activity(neural_data, position_data, bin_size, binarized=True):
             population_activity[idx, :] = np.sum(binned_data > 0, axis=1)
         else:
             population_activity[idx, :] = np.sum(binned_data, axis=1)
+    if fps is not None:
+        occupancy = occupancy / fps
     return population_activity, occupancy, bins
 
 
 def get_tuning_curves(population_activity, occupancy):
+    """ 
+    Converts your spatially binned neuronal activity into rate maps through dividing by occupancy. 
+    Epsilon is some very small error value to bring bins above zero for bayesian decoding.
+    Args:
+        population_activity : numpy.ndarray
+            spatial bin x cells; number of events in each spatial bin
+        occupancy : numpy.ndarray
+            amount of time spent in each spatial bin
+    Returns:
+        tuning_curves : numpy.ndarray
+            spatial bin x cells
+    """
+    epsilon = 1e-12
     tuning_curves = np.zeros((population_activity.shape[0], population_activity.shape[1]))
     for n in np.arange(0, population_activity.shape[1]):
-        tuning_curves[:, n] = population_activity[:, n] / occupancy
+        tuning_curves[:, n] = (population_activity[:, n] / occupancy) + epsilon
     return tuning_curves
 
 
@@ -139,7 +170,7 @@ def skaggs_information_content(tuning_curves, occupancy):
     mean_rate = np.mean(tuning_curves, axis=0)
     prob = occupancy / occupancy.sum()
     ## Handle log2(0)
-    index = tuning_curves > 0
+    index = tuning_curves > 1e-12 ## epsilon value used in get_tuning_curves function
     ## Spatial information formula
     bits_per_event = [np.sum(prob[index[:, n]] * (tuning_curves[:, n][index[:, n]] / mean_rate[n]) * np.log2(tuning_curves[:, n][index[:, n]] / mean_rate[n])) for n in np.arange(0, tuning_curves.shape[1])]
     return np.array(bits_per_event)
@@ -324,3 +355,163 @@ def shuffle_mutual_info(ar, bin_size, lin_pos_col='lin_position', nshuffles=500,
         mi = [mutual_info_score((population_activity[:, uid] * 100).astype(int), discrete_bins) for uid in np.arange(0, population_activity.shape[1])]
         shuffled_mutual[shuffle, :] = mi
     return shuffled_mutual
+
+
+def pf_relative_reward(tuning_curves, reward_one_pos, reward_two_pos, bins=None, proportion=True):
+    """ 
+    Create a distribution of place fields relative to reward locations.
+    Args:
+        tuning_curves : numpy.ndarray
+            output from get_tuning_curves function
+            must be cells x time
+        reward_one_pos, reward_two_pos : float
+            position of rewards
+        bins : numpy.ndarray
+            spatial bins used to create tuning curves. by default None
+        probability : boolean
+            whether to convert the distribution of place fields relative to rewards
+            to a probability instead of count. by default True
+    Returns:
+        h_shift_one, h_shift_two : numpy.ndarray
+            distribution of place fields relative to reward locations for reward one and reward two
+    """
+    ## Find the peak of each place field
+    pf_peaks = np.max(tuning_curves, axis=1)
+    ## Find the spatial bins where each peak occurred
+    field_dist = np.zeros(pf_peaks.shape[0])
+    for idx, peak in enumerate(pf_peaks):
+        field_dist[idx] = bins[np.where(tuning_curves[idx, :] == peak)[0][0]]
+
+    if bins is not None:
+        H, xbin = np.histogram(field_dist, bins=bins[:-1])
+    else:
+        H, xbin = np.histogram(field_dist)
+    mid_bin = int(xbin.shape[0] / 2)
+
+    ## Get spatial bins relative to reward
+    rel_rw_one = np.round(xbin - reward_one_pos, 3)
+    rel_rw_two = np.round(xbin - reward_two_pos, 3)
+    ## Get shifts to center data relative to reward locations
+    shift_one = np.argmin(abs(rel_rw_one)) - mid_bin
+    shift_two = np.argmin(abs(rel_rw_two)) - mid_bin
+    if shift_one > 0:
+        rel_rw_one = np.roll(rel_rw_one, shift=-shift_one)
+        h_shift_one = np.roll(H, shift=-shift_one)
+    else:
+        rel_rw_one = np.roll(rel_rw_one, shift=abs(shift_one))
+        h_shift_one = np.roll(H, shift=abs(shift_one))
+
+    if shift_two > 0:
+        rel_rw_two = np.roll(rel_rw_two, shift=-shift_two)
+        h_shift_two = np.roll(H, shift=-shift_two)
+    else:
+        rel_rw_two = np.roll(rel_rw_two, shift=abs(shift_two))
+        h_shift_two = np.roll(H, shift=abs(shift_two))
+    
+    if proportion:
+        ## Convert to proportion to combine across mice in the future
+        h_shift_one = h_shift_one / np.sum(h_shift_one) 
+        h_shift_two = h_shift_two / np.sum(h_shift_two)
+    return h_shift_one, h_shift_two, H, xbin, mid_bin, rel_rw_one, rel_rw_two
+
+
+def tc_relative_reward(tuning_curves, reward_one_pos, reward_two_pos, bins, proportion=True, tc_metric='average'):
+    """ 
+    Create a single tuning curve across the session that then is used to look at spatial activity around reward locations.
+    Args:
+        tuning_curves : numpy.ndarray
+            output from get_tuning_curves function
+            must be cells x time
+        reward_one_pos, reward_two_pos : float
+            position of rewards
+        bins : numpy.ndarray
+            spatial bins used to create tuning curves. by default None
+        proportion : boolean
+            whether to convert the distribution of place fields relative to rewards
+            to a proportion instead of count. by default True. Only done if tc_metric is not average activity.
+        tc_metric : str
+            one of average or above_zero
+            if average, then will compute an average across all the tuning curves for each spatial bin.
+            if above_zero, will sum all of the values where cells were active across spatial bins to create a histogram
+    Returns:
+        h_shift_one, h_shift_two : numpy.ndarray
+            distribution of where cells are active relative to reward locations for reward one and reward two if tc_metric is above_zero
+            average tuning curve relative to reward one and reward two if tc_metric is average
+
+    """
+    if tc_metric == 'average':
+        tc = np.mean(tuning_curves, axis=0)
+    elif tc_metric == 'above_zero':
+        tc = np.sum(tuning_curves > 1e-10, axis=0) ## have to use a small value because of the epsilon in spatial_activity function for decoding
+        tc = tc / np.sum(tc) ## normalize into proportion
+    else:
+        raise Exception(f'{tc_metric} not supported!')
+
+    mid_bin = int(bins.shape[0] / 2)
+    x_bins = bins.copy()
+
+    ## Get spatial bins relative to reward
+    rel_rw_one = np.round(bins - reward_one_pos, 3)
+    rel_rw_two = np.round(bins - reward_two_pos, 3)
+    ## Get shifts to center data relative to reward locations
+    shift_one = np.argmin(abs(rel_rw_one)) - mid_bin
+    shift_two = np.argmin(abs(rel_rw_two)) - mid_bin
+    if shift_one > 0:
+        rel_rw_one = np.roll(rel_rw_one, shift=-shift_one)
+        h_shift_one = np.roll(tc, shift=-shift_one)
+    else:
+        rel_rw_one = np.roll(rel_rw_one, shift=abs(shift_one))
+        h_shift_one = np.roll(tc, shift=abs(shift_one))
+
+    if shift_two > 0:
+        rel_rw_two = np.roll(rel_rw_two, shift=-shift_two)
+        h_shift_two = np.roll(tc, shift=-shift_two)
+    else:
+        rel_rw_two = np.roll(rel_rw_two, shift=abs(shift_two))
+        h_shift_two = np.roll(tc, shift=abs(shift_two))
+
+    if (proportion) & (tc_metric != 'average'):
+        ## Convert to proportion to combine across mice in the future
+        h_shift_one = h_shift_one / np.sum(h_shift_one) 
+        h_shift_two = h_shift_two / np.sum(h_shift_two)
+    return h_shift_one, h_shift_two, tc, x_bins, mid_bin, rel_rw_one, rel_rw_two
+
+
+def bayesian_decoding(tuning_curves, Q, bins, time_step):
+    """ 
+    Decode the animals location given tuning curves and binned spiking in time using Bayes Theorem.
+    Translated from David Redish's MATLAB code.
+    Args:
+        tuning_curves : numpy.darray
+            must be cells x spatial bin
+        Q : numpy.ndarray
+            must be cells x time
+            histogram of number of events for each cell across the session, binned by time_step
+        bins : numpy.ndarray
+            edges of spatial bins used to create tuning curves
+        time_step : float
+            size of time bins in seconds
+    Returns:
+        pxs : numpy.ndarray
+            time x spatial bin
+            posterior probability distribution (posterior of x [position] given s [spiking]) for each time bin
+            To get the decoded value, find the spatial bin with the maximum posterior probability post-hoc.
+    """
+    num_bins = bins.shape[0] ## spatial bins
+    num_tbins = Q.shape[1] ## time bins
+
+    ## Assume uniform occupancy
+    Px = 1/num_bins
+
+    pxs = np.full((num_tbins, num_bins), np.nan)
+    for bin in np.arange(num_bins): ## for each spatial bin
+        tempProd = np.nansum(np.log(np.matlib.repmat(tuning_curves[:, bin:bin+1], 1, num_tbins)**Q), axis=0) # for all time bins, get collective vote of population
+        tempSum = np.exp(-time_step * np.nansum(tuning_curves[:, bin]))
+        pxs[:, bin] = np.exp(tempProd) * tempSum * Px
+
+    ## Normalize each time bin as long as the value is greater than zero
+    for tbin in np.arange(num_tbins):
+        denom = np.nansum(pxs[tbin, :])
+        if denom > 0:
+            pxs[tbin] /= denom 
+    return pxs
