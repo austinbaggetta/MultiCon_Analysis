@@ -515,3 +515,41 @@ def bayesian_decoding(tuning_curves, Q, bins, time_step):
         if denom > 0:
             pxs[tbin] /= denom 
     return pxs
+
+
+def trial_raster(sdata, bin_size, binarized=True, lin_pos_col='lin_position', **kwargs):
+    """ 
+    Get trial activity for each spatial bin for each neuron.
+    Args:
+        sdata : xarray.DataArray
+            aligned calcium and behavior
+        bin_size : float
+            size of spatial bin
+        binarized : bool
+            whether or not to binarize the event matrix when calculating events within the spatial bin
+        lin_pos_col : str
+            whether to use degrees or radians
+        **kwargs
+            additional arguments for subset_correct_dir_and_running
+    Returns:
+        population_act : numpy.ndarray
+            trial x spatial bin x neuron array
+            values are number of events in that trial in that spatial bin
+        bins : numpy.ndarray
+            spatial bin edges used
+    """
+    neural_data, position_data = ctn.subset_correct_dir_and_running(sdata, **kwargs)
+    bins = ctb.calculate_bins(x=position_data, bin_size=bin_size)
+    trials = np.unique(neural_data['trials'].values)
+    population_act = np.zeros((trials.shape[0], bins[:-1].shape[0], neural_data.shape[0]))
+    for trial_idx, trial in enumerate(trials):
+        tdata = neural_data[:, neural_data['trials'] == trial] ## subset data by trial
+        for spatial_idx, (start, end) in enumerate(zip(bins[:-1], bins[1:])):
+            binned_data = tdata[:, (tdata[lin_pos_col] >= start) & (tdata[lin_pos_col] < end)]
+
+            if binarized:
+                population_act[trial_idx, spatial_idx, :] = np.sum(binned_data > 0, axis=1)
+            else:
+                population_act[trial_idx, spatial_idx, :] = np.sum(binned_data, axis=1)
+
+    return population_act, bins
