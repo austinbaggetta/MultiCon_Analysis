@@ -24,11 +24,13 @@ correct_dir = True
 smooth = False
 binarized = False
 velocity_thresh = 10
-bin_size = 0.16
+bin_size = 0.06
 nshuffles = 500
 percentile = 95
 min_event_amount = 0.2
+min_trial_activity = 6
 min_trials = None ## lowest number of trials a mouse ran on day 16 is 27 trials, which was a two-context mouse
+last_min = False
 # %%
 for mouse in tqdm(mouse_list):
     mpath = pjoin(dpath, f'{mouse}/{data_type}')
@@ -38,12 +40,24 @@ for mouse in tqdm(mouse_list):
         else:
             print(session)
             save_path = pjoin(spath, f'{mouse}/{data_type}')
-            sdata = xr.open_dataset(pjoin(mpath, session))[data_type]
+            S = xr.open_dataset(pjoin(mpath, session))[data_type]
+            sdata = ctn.qc_matrix(S, threshold=True)
             num_neurons = sdata.shape[0]
             minimum_act_bool = pc.minimum_activity_level(sdata, minimum_event_amount=min_event_amount, bin_size_seconds=60, fps=30, func=np.sum, binarized=0)
 
             if min_trials is not None:
-                min_data = sdata[:, sdata['trials'] <= min_trials]
+                forward, reverse = ctb.get_forward_reverse_trials(sdata)
+                if last_min:
+                    sub = forward[-min_trials:]
+                    min_data = sdata[:, sdata['trials'] == sub[0]]
+                    for trial in sub[1:]:
+                        tdata = sdata[:, sdata['trials'] == trial]
+                        min_data = xr.concat([min_data, tdata], dim='frame')
+                else:
+                    min_data = sdata[:, sdata['trials'] == forward[0]]
+                    for trial in forward[1:min_trials]:
+                        tdata = sdata[:, sdata['trials'] == trial]
+                        min_data = xr.concat([min_data, tdata], dim='frame')
             else:
                 min_data = sdata.copy()
 
@@ -55,6 +69,9 @@ for mouse in tqdm(mouse_list):
             neural_data, position_data = ctn.subset_correct_dir_and_running(smoothed_data, correct_dir=correct_dir, only_running=only_running, 
                                                                             velocity_thresh=velocity_thresh)
 
+            ## Calculate how active cells are across trials, and create a boolean to only include cells above some threshold of activity post-hoc
+            trial_raster, _ = pc.trial_raster(neural_data, bin_size=bin_size, binarized=True, correct_dir=correct_dir, only_running=only_running)
+            min_trial_act_bool = np.sum(np.sum(trial_raster, axis=1), axis=0).astype(int) > min_trial_activity
 
             ## Calculate observed Skagg's information content and observed spatial coherence
             population_activity, occupancy, _ = pc.spatial_activity(neural_data, position_data, bin_size=bin_size, binarized=binarized)
@@ -86,10 +103,12 @@ for mouse in tqdm(mouse_list):
                                         odd_even_place=('unit_id', place_cells_odd),
                                         shuffled_avg_si=('unit_id', np.mean(shuffled_si, axis=0)),
                                         shufled_std_si=('unit_id', np.std(shuffled_si, axis=0, ddof=1)),
-                                        minimum_activity_met=('unit_id', minimum_act_bool))
+                                        minimum_activity_met=('unit_id', minimum_act_bool),
+                                        minimum_trial_activity_met=('unit_id', min_trial_act_bool))
             
             if not os.path.exists(save_path):
                 os.makedirs(save_path)
             sdata.to_netcdf(pjoin(save_path, f'{session}'))
 
-# %%
+
+            

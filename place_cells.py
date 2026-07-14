@@ -146,7 +146,7 @@ def spatial_activity(neural_data, position_data, bin_size, binarized=True, fps=N
     return population_activity, occupancy, bins
 
 
-def get_tuning_curves(population_activity, occupancy):
+def get_tuning_curves(population_activity, occupancy, bayesian_decoding=False):
     """ 
     Converts your spatially binned neuronal activity into rate maps through dividing by occupancy. 
     Epsilon is some very small error value to bring bins above zero for bayesian decoding.
@@ -159,7 +159,10 @@ def get_tuning_curves(population_activity, occupancy):
         tuning_curves : numpy.ndarray
             spatial bin x cells
     """
-    epsilon = 1e-12
+    if bayesian_decoding:
+        epsilon = 1e-12
+    else:
+        epsilon = 0
     tuning_curves = np.zeros((population_activity.shape[0], population_activity.shape[1]))
     for n in np.arange(0, population_activity.shape[1]):
         tuning_curves[:, n] = (population_activity[:, n] / occupancy) + epsilon
@@ -357,7 +360,7 @@ def shuffle_mutual_info(ar, bin_size, lin_pos_col='lin_position', nshuffles=500,
     return shuffled_mutual
 
 
-def pf_relative_reward(tuning_curves, reward_one_pos, reward_two_pos, bins=None, proportion=True):
+def pf_relative_reward(tuning_curves, reward_one_pos, reward_two_pos, bins, reward_bins=None, proportion=True):
     """ 
     Create a distribution of place fields relative to reward locations.
     Args:
@@ -382,8 +385,8 @@ def pf_relative_reward(tuning_curves, reward_one_pos, reward_two_pos, bins=None,
     for idx, peak in enumerate(pf_peaks):
         field_dist[idx] = bins[np.where(tuning_curves[idx, :] == peak)[0][0]]
 
-    if bins is not None:
-        H, xbin = np.histogram(field_dist, bins=bins[:-1])
+    if reward_bins is not None:
+        H, xbin = np.histogram(field_dist, bins=reward_bins)
     else:
         H, xbin = np.histogram(field_dist)
     mid_bin = int(xbin.shape[0] / 2)
@@ -517,6 +520,19 @@ def bayesian_decoding(tuning_curves, Q, bins, time_step):
     return pxs
 
 
+def max_likelihood_pos(pxs, pos, bins):
+    """ 
+    Returns the decoded position of the animal and the binned position of the animal.
+    """
+    decoded_bins = np.argmax(pxs, axis=1)
+    decoded_pos = np.zeros(decoded_bins.shape[0])
+    pos_binned = np.zeros(pos.shape[0])
+    for i, idx in enumerate(np.arange(pos.shape[0])):
+        decoded_pos[i] = bins[:-1][decoded_bins[idx]]
+        pos_binned[i] = bins[:-1][np.argmin(abs(bins[:-1] - pos[i]))]
+    return decoded_pos, pos_binned
+
+
 def trial_raster(sdata, bin_size, binarized=True, lin_pos_col='lin_position', **kwargs):
     """ 
     Get trial activity for each spatial bin for each neuron.
@@ -553,3 +569,60 @@ def trial_raster(sdata, bin_size, binarized=True, lin_pos_col='lin_position', **
                 population_act[trial_idx, spatial_idx, :] = np.sum(binned_data, axis=1)
 
     return population_act, bins
+
+
+def place_field_starting_trials(trial_raster):
+    """ 
+    Get the trial where a stable place field begins.
+    Args:
+        trial_raster : numpy.ndarray
+            matrix in the shape of trial x spatial bin x neuron
+            amount of activity on a given trial in a spatial bin for each neuron
+            output from trial_raster function
+    Returns:
+        trial_start_per_neuron
+            array equal to the number of neurons
+            value for each neuron is the trial where that neuron first fired in its stable place field
+    """
+    trial_bool = (trial_raster > 0).astype(int)
+    trial_start_per_neuron = np.empty((trial_bool.shape[2]))
+    trial_start_per_neuron.fill(np.nan)
+    for uid in np.arange(trial_bool.shape[2]):
+        sub = trial_bool[:, :, uid]
+        locations = np.where(sub == 1)
+        trial_indices, spatial_bin_indices = locations[0], locations[1]
+        num_of_spatial_bin_occurences = np.bincount(spatial_bin_indices)[spatial_bin_indices]
+        max_occurences = np.max(num_of_spatial_bin_occurences)
+
+        first_trial = -1 ## change value to actual trial if trial is first trial to break the loop
+        for trial in np.unique(trial_indices):
+            bin_locs_per_trial = np.where(trial_indices == trial)[0]
+            num_occurences_per_trial = num_of_spatial_bin_occurences[bin_locs_per_trial]
+            if any(num_occurences_per_trial == max_occurences) & (first_trial == -1):
+                trial_start_per_neuron[uid] = trial
+                first_trial = trial
+            else:
+                pass
+    return trial_start_per_neuron
+
+
+def place_field_peak(tuning_curves, bins):
+    """ 
+    Args:
+        tuning_curves : numpy.ndarray
+            must be cells x spatial bin
+            output from get_tuning_curves function (after transpose)
+        bins : numpy.ndarray
+            array of spatial bins
+            output from spatial_activity function
+    Returns:
+        field_dist : numpy.ndarray
+            spatial bin where the peak of the tuning curve is for each cell
+    """
+    ## Find the peak of each place field
+    pf_peaks = np.max(tuning_curves, axis=1)
+    ## Find the spatial bins where each peak occurred
+    field_dist = np.zeros(pf_peaks.shape[0])
+    for idx, peak in enumerate(pf_peaks):
+        field_dist[idx] = bins[np.where(tuning_curves[idx, :] == peak)[0][0]]
+    return field_dist

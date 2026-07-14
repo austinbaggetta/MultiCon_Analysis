@@ -251,6 +251,20 @@ def extract_windowed_data(data, window_val, window_size, col_name=None):
 
 
 def extract_windowed_data_by_index(data, window_val, window_size, fps=30):
+    """ 
+    Extract data values within some window of time.
+    Args:
+        data : numpy.ndarray
+            data to extract windowed values from
+        window_val : int
+            idx of where window is centered on
+        window_size : float
+            window size in seconds
+        fps : int
+            frames per second
+    Returns:
+        windowed data
+    """
     w = window_size * fps ## window_size in seconds
     return data[int(window_val - w):int(window_val + w + 1)]
 

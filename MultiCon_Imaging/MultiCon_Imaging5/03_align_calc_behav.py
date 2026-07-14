@@ -28,6 +28,7 @@ for mouse in mouse_list:
             idx += 1
         elif (mouse == 'mc52') & (idx > 2):
             idx += 1
+        
         dpath = pjoin(mpath, session)
         timestamp = os.listdir(dpath)[0] ## minian timestamp is first folder
         date = re.search('20[0-2][0-9]_[0-9]+_[0-9]+', dpath)[0]

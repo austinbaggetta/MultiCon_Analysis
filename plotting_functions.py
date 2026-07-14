@@ -137,25 +137,25 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
             avg_sub = avg_data.loc[avg_data[groupby_var[-1]] == group]
             sem_sub = sem_data.loc[sem_data[groupby_var[-1]] == group]
             fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
-                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=6,
-                                     error_y = dict(type='data', array=sem_sub[y_var], thickness=2), legendgroup=group, 
+                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=8,
+                                     error_y = dict(type='data', array=sem_sub[y_var], thickness=2.5), legendgroup=group, 
                                      line=dict(color=group_dict[group]), name=group, showlegend=True,
                                      marker=dict(line=dict(width=1.5)), line_width=2.5))
     else:
         fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
                                 mode='lines+markers', 
-                                error_y=dict(type='data', array=sem_data[y_var], thickness=2), marker_size=6,
+                                error_y=dict(type='data', array=sem_data[y_var], thickness=2.5), marker_size=8,
                                 line=dict(color=avg_color), showlegend=False, marker_symbol=symbols,
                                 marker=dict(line=dict(width=1.5)), line_width=2.5))
     ## Add dashed lines   
     if expert_line:
-        fig.add_hline(y=75, line_width=2, line_dash='dash', line_color=chance_color, opacity=1)
+        fig.add_hline(y=75, line_width=3, line_dash='dash', line_color=chance_color, opacity=1, layer='below')
     if chance:
-        fig.add_hline(y=25, line_width=2, line_dash='dash', line_color=chance_color, opacity=1)
+        fig.add_hline(y=25, line_width=3, line_dash='dash', line_color=chance_color, opacity=1, layer='below')
     ## Plot transitions
     if plot_transitions is not None:
         for idx, value in enumerate(plot_transitions):
-            fig.add_vline(x=value, line_width=2, line_dash='dash', line_color=transition_color[idx], opacity=1)
+            fig.add_vline(x=value, line_width=3, line_dash='dash', line_color=transition_color[idx], opacity=1, layer='below')
     return fig
 
 
@@ -631,7 +631,7 @@ def create_polar_plots(fig_data, bar_color, data_col='r', error_col=None, **kwar
     return fig
 
 
-def preprocessed_plots(data_out, angle_type='degrees', position_color='darkgrey', save_path=None):
+def preprocessed_plots(data_out, angle_type='degrees', position_color='darkgrey', save_path=None, idx=None):
     """
     Used to visualize accuracy of preprocessing raw circle track data.
     Args:
@@ -641,6 +641,8 @@ def preprocessed_plots(data_out, angle_type='degrees', position_color='darkgrey'
             degrees or radians
         save_path : str
             by default None; specify path to save html graphic
+        idx : int
+            if not using session_two as identifier, can use session (A, B, etc) plus day index to save data
     Returns:
         fig : plotly.graph_object
     """
@@ -675,7 +677,10 @@ def preprocessed_plots(data_out, angle_type='degrees', position_color='darkgrey'
     fig['data'][3]['name'] = 'Trials'
 
     if save_path is not None:
-        fig.write_html(os.path.join(save_path, f"{data_out['animal'].unique()[0]}_{data_out['session_two'].unique()[0]}_preprocessed.html"))
+        try:
+            fig.write_html(os.path.join(save_path, f"{data_out['animal'].unique()[0]}_{data_out['session_two'].unique()[0]}_preprocessed.html"))
+        except:
+            fig.write_html(os.path.join(save_path, f"{data_out['animal'].unique()[0]}_{data_out['session'].unique()[0]}{idx}_preprocessed.html"))
     return fig
 
 
