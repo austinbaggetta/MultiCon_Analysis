@@ -130,7 +130,7 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
                 subject_color = marker_color
                 legendgroup = marker_color
             fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var], showlegend=False, legendgroup=legendgroup,
-                                    mode=datapoint_type, opacity=0.5, name=subject, line_color=subject_color, line_width=1))
+                                    mode=datapoint_type, opacity=0.3, name=subject, line_color=subject_color, line_width=1))
     ## Plot group average or multiple group averages
     if ('group' in groupby_var) | ('group_two' in groupby_var) | ('sex' in groupby_var) | ('maze' in groupby_var) | ('experimenter' in groupby_var):
         for group in np.unique(avg_data[groupby_var[-1]]):
