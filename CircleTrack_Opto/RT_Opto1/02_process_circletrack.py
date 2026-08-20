@@ -17,7 +17,7 @@ import plotting_functions as pf
 ## Set parameters
 starting_idx = 0 ## can use to specify which days you want processed
 parent_dir = 'CircleTrack_Opto'
-experiment_dir = 'RT_Opto_Test'
+experiment_dir = 'RT_Opto1'
 todays_mazes = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/{experiment_dir} - TodaysMazes.csv')
 todays_mazes_type2 = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/{experiment_dir} - TodaysMazes2.csv')
 behavior_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/circletrack_data/")
@@ -25,8 +25,8 @@ output_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/output/be
 save_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/output/behav_preprocessing_plots")
 if not os.path.exists(output_path):
     os.makedirs(output_path)
-cohort_name = 'rto_test'
-mouse_list = ['rto01']
+cohort_name = 'rto1'
+mouse_list = [f'rto0{x}' for x in np.arange(2, 10)] + ['rto10', 'rto11', 'rto12']
 str2match = "(rto[0-9]+)" ## Set str2match variable (regex for mouse name)
 ## Set relative path variable for circletrack behavior data
 csv_path = pjoin(behavior_path, "data/**/**/**/circle_track.csv")
@@ -133,6 +133,3 @@ for mouse in mouse_list:
                 data_out.to_feather(pjoin(result_path, f"{mouse}_{session[-2:]}.feat"))
             
             fig = pf.preprocessed_plots(data_out, angle_type='degrees', save_path=spath)
-
-
-# %%
