@@ -556,21 +556,24 @@ def rewards_across_trials(behav):
     return np.array(num_rewards)
 
 
-def lick_accuracy(df, port_list, lick_threshold, by_trials=False, to_percent=True):
+def lick_accuracy(df, port_list, lick_threshold=5, by_trials=False, to_percent=True):
     """
     Used to calculate lick accuracy of a given lick within a bout of licks.
     Args:
         df : pandas.DataFrame
             preprocessed behavior containing columns for trials, lick_ports
-        port_one, port_two : int
-            which ports were rewarded (e.g. 5)
+        port_list : list
+            which ports were rewarded during the session (e.g. [2, 5]). Can be larger or smaller than two ports.
         lick_threshold : int
-            which lick you want to look at in a bout of licks
+            which lick you want to look at in a bout of licks. By default 5
         by_trials : boolean
             if True, will calculate percent correct within a trial. By default False.
+        to_percent : boolean
+            if True, will convert the proportion to a percentage
     Returns:
         percent_correct : float or list
             returns a single value when not calculated on a trial by trial basis
+            or a list where each entry is the lick accuracy on that trial
     """
     if to_percent:
         scale_factor = 100
