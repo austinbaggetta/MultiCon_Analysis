@@ -1,4 +1,5 @@
 import os
+import math
 import dask
 import pickle
 import itertools
@@ -606,6 +607,73 @@ def shuffle_cell_cell_correlations(d, seeds, corr_metric: str = 'spearman', nshu
         
         shuff_mat[:, :, shuff] = shuff_cor_mat
     return shuff_mat
+
+
+def time_binned_cell_cell_correlations(ar, chunks=4, corr_metric='spearman', fill_diag=True):
+    """ 
+    Bin neural data into multiple chunks and calculate the cell-cell correlations within each chunk of time.
+    Args:
+        ar : numpy.ndarray
+            neural activity as an array of cells x time
+        chunks : int
+            number of time bins to chunk data into; by default 4
+        corr_metric : str
+            what type of correlation to compute; by default Spearman's rho
+        fill_diag : bool
+            if True, will fill diagonal of each time chunk with NaNs
+    Returns:
+        corrs : numpy.ndarray
+            an array of cell x cell x time chunk, where each value is that cells correlation coefficient to another cell in that time chunk
+    """
+    ar_size = ar.shape[1]
+    chunk_size = int(math.ceil(ar_size / chunks))
+    corrs = np.zeros((ar.shape[0], ar.shape[0], chunks))
+    for idx, bin in enumerate(np.arange(0, ar_size, chunk_size)):
+        for first_uid in np.arange(0, ar.shape[0]):
+            for second_uid in np.arange(0, ar.shape[0]):
+                if corr_metric == 'spearman':
+                    r = spearmanr(ar[first_uid, bin:bin + chunk_size], ar[second_uid, bin:bin + chunk_size]).statistic
+                    corrs[first_uid, second_uid, idx] = r 
+    if fill_diag:
+        for idx in np.arange(corrs.shape[2]):
+            np.fill_diagonal(corrs[:, :, idx], np.nan)
+    return corrs
+
+
+def reward_binned_cell_cell_correlations(ar, total_rewards, cumulative_rewards, rw_chunks=4, corr_metric='spearman', fill_diag=True):
+    """ 
+    Bin neural data into multiple reward chunks and calculate the cell-cell correlations within each chunk.
+    Amount of time may be different in each chunk because you're using the neural data that occurs within x number of rewards earned.
+    Args:
+        ar : numpy.ndarray
+            neural activity as an array of cells x time
+        total_rewards : int
+            number of rewards earned in the session
+        cumulative_rewards : numpy.ndarray
+            array where each frame/time bin is labeled as how many rewards have been earned at that point
+        rw_chunks : int
+            number of reward bins to chunk data into; by default 4
+        corr_metric : str
+            what type of correlation to compute; by default Spearman's rho
+        fill_diag : bool
+            if True, will fill diagonal of each time chunk with NaNs
+    Returns:
+        corrs : numpy.ndarray
+            an array of cell x cell x reward chunk, where each value is that cells correlation coefficient to another cell in that reward chunk
+    """
+    chunk_size = int(math.ceil(total_rewards / rw_chunks))
+    corrs = np.zeros((ar.shape[0], ar.shape[0], rw_chunks))
+    for idx, bin in enumerate(np.arange(0, total_rewards, chunk_size)):
+        for first_uid in np.arange(0, ar.shape[0]):
+            for second_uid in np.arange(0, ar.shape[0]):
+                if corr_metric == 'spearman':
+                    r = spearmanr(ar[first_uid][(cumulative_rewards >= bin) & (cumulative_rewards < bin + chunk_size)], 
+                                  ar[second_uid][(cumulative_rewards >= bin) & (cumulative_rewards < bin + chunk_size)]).statistic
+                    corrs[first_uid, second_uid, idx] = r 
+    if fill_diag:
+        for idx in np.arange(corrs.shape[2]):
+            np.fill_diagonal(corrs[:, :, idx], np.nan)
+    return corrs
 
 
 def qc_matrix(ar, threshold=True):
