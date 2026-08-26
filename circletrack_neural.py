@@ -676,6 +676,46 @@ def reward_binned_cell_cell_correlations(ar, total_rewards, cumulative_rewards, 
     return corrs
 
 
+def shuffle_reward_binned_cell_cell_correlations(ar, total_rewards, cumulative_rewards, rw_chunks=4, corr_metric='spearman', 
+                                                 nshuffles=500, seed=24601):
+    """ 
+    Bin neural data into multiple reward chunks, shuffle the neural data by shifting the array
+    by rand_shift, and calculate the cell-cell correlations within each chunk to get a distribution of chance correlations.
+    Amount of time may be different in each chunk because you're using the neural data that occurs within x number of rewards earned.
+    Args:
+        ar : numpy.ndarray
+            neural activity as an array of cells x time
+        total_rewards : int
+            number of rewards earned in the session
+        cumulative_rewards : numpy.ndarray
+            array where each frame/time bin is labeled as how many rewards have been earned at that point
+        rw_chunks : int
+            number of reward bins to chunk data into; by default 4
+        corr_metric : str
+            what type of correlation to compute; by default Spearman's rho
+        nshuffles : int
+            number of iterations
+        seed : int
+            for making reproducible shuffling
+    Returns:
+        corrs : numpy.ndarray
+            an array of cell x cell x reward chunk, where each value is that cells correlation coefficient to another cell in that reward chunk
+    """
+    rs = RandomState(MT19937(SeedSequence(seed)))
+    chunk_size = int(math.ceil(total_rewards / rw_chunks))
+    corrs = np.zeros((ar.shape[0], ar.shape[0], rw_chunks, nshuffles))
+    for sim in np.arange(nshuffles):
+        for idx, bin in enumerate(np.arange(0, total_rewards, chunk_size)):
+            rand_shift = rs.randint(30, ar.shape[1] - 30) ## since recording at 30 frames per second, shift by at least that
+            for first_uid in np.arange(0, ar.shape[0]):
+                for second_uid in np.arange(0, ar.shape[0]):
+                    if corr_metric == 'spearman':
+                        r = spearmanr(np.roll(ar[first_uid][(cumulative_rewards >= bin) & (cumulative_rewards < bin + chunk_size)], rand_shift), 
+                                              ar[second_uid][(cumulative_rewards >= bin) & (cumulative_rewards < bin + chunk_size)]).statistic
+                        corrs[first_uid, second_uid, idx, sim] = r 
+    return corrs
+
+
 def qc_matrix(ar, threshold=True):
     """
     Perform quality control on the cell activity matrix. Subsets the unit_id dimension to include
