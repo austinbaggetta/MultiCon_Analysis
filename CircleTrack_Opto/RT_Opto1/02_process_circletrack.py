@@ -133,3 +133,5 @@ for mouse in mouse_list:
                 data_out.to_feather(pjoin(result_path, f"{mouse}_{session[-2:]}.feat"))
             
             fig = pf.preprocessed_plots(data_out, angle_type='degrees', save_path=spath)
+
+# %%
