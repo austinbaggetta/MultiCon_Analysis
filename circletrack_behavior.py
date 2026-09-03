@@ -1036,3 +1036,22 @@ def smooth_over_trials(sess, filter_width=2, lin_pos_col='a_pos'):
         x_pos = np.concatenate((x_pos, gaussian_filter(tdata['x'], filter_width)))
         y_pos = np.concatenate((y_pos, gaussian_filter(tdata['y'], filter_width)))
     return x_pos, y_pos, lin_pos
+
+
+def logistic_func(x, L, k, m):
+    """ 
+    Used to make sigmoid curves using the logistic function when coupled with scipy's curve_fit function.
+    Args:
+        x : np.ndarray
+            1D array of observations for the independent variable
+            for example, trials
+        L : float
+            carrying capacity, which is the highest value of the function
+        k : float
+            logistic growth rate, or the steepness of the curve
+        m : float
+            x value of the function's midpoint
+    Returns:
+        value (float) at that independent variable value
+    """
+    return (L / (1 + np.exp(-k * (x - m))))
