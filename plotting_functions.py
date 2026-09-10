@@ -137,14 +137,14 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
             avg_sub = avg_data.loc[avg_data[groupby_var[-1]] == group]
             sem_sub = sem_data.loc[sem_data[groupby_var[-1]] == group]
             fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
-                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=8,
+                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=9,
                                      error_y = dict(type='data', array=sem_sub[y_var], thickness=2.5), legendgroup=group, 
                                      line=dict(color=group_dict[group]), name=group, showlegend=True,
                                      marker=dict(line=dict(width=1.5)), line_width=2.5))
     else:
         fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
                                 mode='lines+markers', 
-                                error_y=dict(type='data', array=sem_data[y_var], thickness=2.5), marker_size=8,
+                                error_y=dict(type='data', array=sem_data[y_var], thickness=2.5), marker_size=9,
                                 line=dict(color=avg_color), showlegend=False, marker_symbol=symbols,
                                 marker=dict(line=dict(width=1.5)), line_width=2.5))
     ## Add dashed lines   
