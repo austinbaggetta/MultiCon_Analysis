@@ -15,7 +15,7 @@ import plotting_functions as pf
 
 # %%
 ## Set parameters
-starting_idx = 10 ## can use to specify which days you want processed
+starting_idx = 11 ## can use to specify which days you want processed
 parent_dir = 'CircleTrack_Opto'
 experiment_dir = 'RT_Opto1'
 todays_mazes = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/{experiment_dir} - TodaysMazes.csv')
