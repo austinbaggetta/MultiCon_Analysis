@@ -15,7 +15,7 @@ import plotting_functions as pf
 
 # %%
 ## Set parameters
-starting_idx = 20 ## can use to specify which days you want processed
+starting_idx = 15 ## can use to specify which days you want processed
 parent_dir = 'CircleTrack_Opto'
 experiment_dir = 'RT_Opto1'
 todays_mazes = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/{experiment_dir} - TodaysMazes.csv')
@@ -43,7 +43,6 @@ for file in file_list:
 combined_list = ctb.combine(file_list, mouseID)
 combined_log = ctb.combine(log_list, mouseID)
 
-
 # %%
 for mouse in mouse_list:
     print(mouse)
@@ -69,7 +68,7 @@ for mouse in mouse_list:
             unix_start =  pd.to_numeric(circle_track.loc[circle_track['event'] == 'START', 'timestamp'].values[0])
             circle_track.loc[:, "frame"] = np.arange(len(circle_track))
             locations = circle_track[circle_track['event'] == 'LOCATION'].copy().reset_index(drop=True)
-            opto_events = circle_track[(circle_track['event'] == 'OPTO_START') | (circle_track['event'] == 'OPTO_END')]
+            opto_events = circle_track[(circle_track['event'] == 'OPTO_START') | (circle_track['event'] == 'OPTO_END')].reset_index(drop=True)
             data_out = circle_track[(circle_track["event"] != "START") & (circle_track["event"] != "TERMINATE")].copy().reset_index(drop=True)
             data_out['timestamp'] = data_out['timestamp'].astype(float)
             locations['timestamp'] = locations['timestamp'].astype(float)
@@ -105,9 +104,12 @@ for mouse in mouse_list:
             data_out['correct_dir'] = ctb.get_correct_direction(data_out['a_pos'])
             data_out["trials"] = ctb.get_trials(data_out["a_pos"])
             data_out['opto_active'] = False
-            if opto_events.empty:
+            if not opto_events.empty:
+                ## some rare instances where there is an opto_end but no opto_start right at the beginning
+                if opto_events['event'].values[0] == 'OPTO_END':
+                    opto_events = opto_events.drop([0])
                 for opto_start, opto_end in zip(opto_events['frame'][opto_events['event'] == 'OPTO_START'], opto_events['frame'][opto_events['event'] == 'OPTO_END']):
-                    data_out.loc[opto_start:opto_end + 1, 'opto_active'] = True 
+                    data_out.loc[opto_start - 1:opto_end - 1, 'opto_active'] = True ## subtract 1 since frame is index + 1
             data_out[["animal", "session", "cohort"]] = mouse, todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0], cohort_name
             data_out['session_two'] = todays_mazes_type2[session][todays_mazes_type2['Mouse'] == mouse].tolist()[0]
             data_out[['reward_one', 'reward_two']] = int(rewards[0][-1]), int(rewards[1][-1])
