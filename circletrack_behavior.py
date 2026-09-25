@@ -292,7 +292,7 @@ def bin_linearized_position(linearized_trajectory, angle_type='radians', bin_num
     return binned
 
 
-def get_trials(angular_position, jump_val=295, angle_accumulation=-294, min_trial_length=220, convert_to_rad=False):
+def get_trials(angular_position, jump_val=295, angle_accumulation=-294, min_trial_length=171, max_trial_length=750, convert_to_rad=False):
     """
     Labels each frame as part of a trial.
     A trial is determined as:
@@ -308,6 +308,8 @@ def get_trials(angular_position, jump_val=295, angle_accumulation=-294, min_tria
             how many degrees/radians are needed for the cumulative sum of the trial
         min_trial_length: int
             how many frames the minimum trial must be. Can help get rid of blips where the mouse is sitting at the zero location.
+        max_trial_length: int
+            how many frames the maximum length of a trial can be. Can help separate laps where mice are moving back and forth
         convert_to_rad : bool
             whether or not you want to convert your angular position data from degrees to radians. If in radians, must account for
             this in the jump_val and angle_accumulation values
@@ -323,24 +325,34 @@ def get_trials(angular_position, jump_val=295, angle_accumulation=-294, min_tria
 
     prev_idx = 0
     diffs = np.diff(lin_pos)
-    for trial, jump in enumerate(np.where(diffs >= jump_val)[0]):
+    for trial, jump in enumerate(np.where((diffs >= jump_val) | (diffs <= -jump_val))[0]):
         ## Account for first trial
         if trial == 0:
-            trials[prev_idx:jump+1] = trial
-            prev_idx = jump+1
+            trials[prev_idx:jump + 1] = trial
+            prev_idx = jump + 1
             prev_trial = trial ## create prev_trial variable to account for some "trials" in the loop not meeting trial criteria
         else:
-            if (np.cumsum(diffs[prev_idx:jump])[-1] <= angle_accumulation) and (len(diffs[prev_idx:jump]) >= min_trial_length):
-                trials[prev_idx:jump+1] = prev_trial + 1
-                prev_idx = jump+1
+            if prev_idx == jump: ## account for edge cases
+                trials[prev_idx:jump + 1] = prev_trial
+            elif (np.cumsum(diffs[prev_idx:jump])[-1] <= angle_accumulation) and (len(diffs[prev_idx:jump]) >= min_trial_length):
+                trials[prev_idx:jump + 1] = prev_trial + 1
+                prev_idx = jump + 1
+                prev_trial = prev_trial + 1
+            elif (np.cumsum(diffs[prev_idx:jump])[-1] >= abs(angle_accumulation)) and (len(diffs[prev_idx:jump]) >= min_trial_length):
+                trials[prev_idx:jump + 1] = prev_trial + 1
+                prev_idx = jump + 1
+                prev_trial = prev_trial + 1
+            elif diffs[prev_idx:jump].shape[0] >= max_trial_length:
+                trials[prev_idx:jump + 1] = prev_trial + 1
+                prev_idx = jump + 1
                 prev_trial = prev_trial + 1
             else:
                 ## If the data points don't meet the above criteria, set those data points as part of the previous trial
-                trials[prev_idx:jump+1] = prev_trial
-                prev_idx = jump+1
+                trials[prev_idx:jump + 1] = prev_trial
+                prev_idx = jump + 1
         
         ## Account for last trial
-        if trial == len(np.where(diffs > jump_val)[0]) - 1:
+        if trial == len(np.where((diffs >= jump_val) | (diffs <= -jump_val))[0]) - 1:
             trials[prev_idx:] = prev_trial + 1
     return trials
 
@@ -432,7 +444,7 @@ def dprime_metrics(data, mouse, day, reward_ports, reward_index='one', forward_r
     for port in reward_ports:
         nonreward_list.remove(port)
     
-    if len(reward_ports) > 1:
+    if len(reward_ports) == 2:
         reward_one, reward_two = reward_ports[0], reward_ports[1]
 
     signal = {'mouse': [], 'day': [], 'trial': [], 'hits': [], 'miss': [], 'FA': [], 'CR': [], 'dprime': []}
