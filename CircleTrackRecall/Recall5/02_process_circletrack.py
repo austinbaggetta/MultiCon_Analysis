@@ -9,13 +9,13 @@ import pandas as pd
 from natsort import natsort_keygen
 from tqdm import tqdm
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_behavior as ctb
 import plotting_functions as pf
 
 # %%
 ## Set parameters
-starting_idx = 5 ## can use to specify which days you want processed
+starting_idx = 0 ## can use to specify which days you want processed
 parent_dir = 'CircleTrack_Recall'
 experiment_dir = 'Recall5'
 todays_mazes = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/todays_mazes.csv')
@@ -27,6 +27,7 @@ if not os.path.exists(output_path):
     os.makedirs(output_path)
 cohort_name = 'mcr5'
 mouse_list = [f'mcr{x}' for x in np.arange(90, 95)] + [f'mcr{x}' for x in np.arange(96, 102)]
+mouse_list = ['mcr90']
 str2match = "(mcr[0-9]+)" ## Set str2match variable (regex for mouse name)
 ## Set relative path variable for circletrack behavior data
 csv_path = pjoin(behavior_path, "data/**/**/**/circle_track.csv")

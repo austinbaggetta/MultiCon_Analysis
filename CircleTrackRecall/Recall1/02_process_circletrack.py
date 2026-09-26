@@ -9,7 +9,7 @@ import pandas as pd
 from natsort import natsort_keygen
 from tqdm import tqdm
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_behavior as ctb
 import plotting_functions as pf
 
@@ -26,7 +26,7 @@ save_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/output/beha
 if not os.path.exists(output_path):
     os.makedirs(output_path)
 cohort_name = 'mcr1'
-mouse_list = [f'mcr0{x}' for x in np.arange(1, 10)] + [f'mcr{x}' for x in np.arange(10, 17)]
+mouse_list = [f'mcr0{x}' for x in np.arange(1, 9)] + [f'mcr{x}' for x in np.arange(10, 17)]
 ## Set relative path variable for circletrack behavior data
 csv_path = pjoin(behavior_path, "data/**/**/**/circle_track.csv")
 log_path = pjoin(behavior_path, "data/**/**/**/**.log")

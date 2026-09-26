@@ -9,14 +9,13 @@ import pandas as pd
 from natsort import natsort_keygen
 from tqdm import tqdm
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_behavior as ctb
 import plotting_functions as pf
 
 # %%
 ## Set parameters
 starting_idx = 0 ## can use to specify which days you want processed
-min_trial_length = 280
 parent_dir = 'MultiCon_Behavior'
 experiment_dir = 'MultiCon_Aging2'
 todays_mazes = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/todays_mazes.csv')
@@ -27,8 +26,7 @@ save_path = os.path.abspath(f"../../../{parent_dir}/{experiment_dir}/output/beha
 if not os.path.exists(output_path):
     os.makedirs(output_path)
 cohort_name = 'mc_ag2'
-# mouse_list = [f'mca{x}' for x in np.arange(24, 48)]
-mouse_list = [f'mca{x}' for x in np.arange(43, 48)]
+mouse_list = [f'mca{x}' for x in np.arange(24, 48)]
 ## Set str2match variable (regex for mouse name)
 str2match = "(mca[0-9]+)"
 ## Set relative path variable for circletrack behavior data
@@ -76,6 +74,7 @@ for mouse in mouse_list:
             circle_track.loc[:, "frame"] = np.arange(len(circle_track))
             locations = circle_track[circle_track['event'] == 'LOCATION'].copy().reset_index(drop=True)
             data_out = circle_track[(circle_track["event"] != "START") & (circle_track["event"] != "TERMINATE")].copy().reset_index(drop=True)
+            data_out = data_out[~pd.isna(data_out['data'])]
             data_out['timestamp'] = data_out['timestamp'].astype(float)
             locations['timestamp'] = locations['timestamp'].astype(float)
 
@@ -108,7 +107,7 @@ for mouse in mouse_list:
             data_out['a_pos'] = data_out['a_pos'].ffill()
             data_out["lin_position"] = data_out["a_pos"] * (np.pi/180)
             data_out['correct_dir'] = ctb.get_correct_direction(data_out['a_pos'])
-            data_out["trials"] = ctb.get_trials(data_out["a_pos"], min_trial_length=min_trial_length)
+            data_out["trials"] = ctb.get_trials(data_out["a_pos"])
             data_out[["animal", "session", "cohort"]] = mouse, todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0], cohort_name
             data_out['session_two'] = todays_mazes_type2[session][todays_mazes_type2['Mouse'] == mouse].tolist()[0]
             data_out[['reward_one', 'reward_two']] = int(rewards[0][-1]), int(rewards[1][-1])

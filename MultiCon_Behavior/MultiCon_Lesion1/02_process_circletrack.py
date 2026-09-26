@@ -9,14 +9,13 @@ import pandas as pd
 from natsort import natsort_keygen
 from tqdm import tqdm
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_behavior as ctb
 import plotting_functions as pf
 
 # %%
 ## Set parameters
 starting_idx = 0 ## can use to specify which days you want processed
-min_trial_length = 280
 parent_dir = 'MultiCon_Behavior'
 experiment_dir = 'MultiCon_Lesion1'
 todays_mazes = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/todays_mazes.csv')
@@ -103,7 +102,7 @@ for mouse in mouse_list:
             data_out['a_pos'] = data_out['a_pos'].ffill()
             data_out["lin_position"] = data_out["a_pos"] * (np.pi/180)
             data_out['correct_dir'] = ctb.get_correct_direction(data_out['a_pos'])
-            data_out["trials"] = ctb.get_trials(data_out["a_pos"], min_trial_length=min_trial_length)
+            data_out["trials"] = ctb.get_trials(data_out["a_pos"])
             data_out[["animal", "session", "cohort"]] = mouse, todays_mazes[session][todays_mazes['Mouse'] == mouse].tolist()[0], cohort_name
             data_out['session_two'] = todays_mazes_type2[session][todays_mazes_type2['Mouse'] == mouse].tolist()[0]
             data_out[['reward_one', 'reward_two']] = int(rewards[0][-1]), int(rewards[1][-1])

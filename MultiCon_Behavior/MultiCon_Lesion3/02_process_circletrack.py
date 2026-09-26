@@ -9,7 +9,7 @@ import pandas as pd
 from natsort import natsort_keygen
 from tqdm import tqdm
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_behavior as ctb
 import plotting_functions as pf
 
@@ -42,7 +42,6 @@ for file in file_list:
 ## Combine file_list and mouseID
 combined_list = ctb.combine(file_list, mouseID)
 combined_log = ctb.combine(log_list, mouseID)
-
 
 # %%
 for mouse in mouse_list:

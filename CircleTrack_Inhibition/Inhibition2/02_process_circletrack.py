@@ -9,13 +9,13 @@ import pandas as pd
 from natsort import natsort_keygen
 from tqdm import tqdm
 
-sys.path.append('/home/austinbaggetta/csstorage3/CircleTrack/CircleTrackAnalysis')
+sys.path.append('../../')
 import circletrack_behavior as ctb
 import plotting_functions as pf
 
 # %%
 ## Set parameters
-starting_idx = 11 ## can use to specify which days you want processed
+starting_idx = 0 ## can use to specify which days you want processed
 parent_dir = 'CircleTrack_Inhibition'
 experiment_dir = 'Inhibition2'
 todays_mazes = pd.read_csv(f'../../../{parent_dir}/{experiment_dir}/maze_yml/{experiment_dir} - TodaysMazes.csv')
