@@ -137,10 +137,13 @@ def spatial_activity(neural_data, position_data, bin_size, binarized=True, fps=N
     for idx, (start, end) in enumerate(zip(bins[:-1], bins[1:])):
         binned_data = neural_data[:, (position_data >= start) & (position_data < end)]
         occupancy[idx] = binned_data.shape[1]
-        if binarized:
-            population_activity[idx, :] = np.sum(binned_data > 0, axis=1)
+        if binned_data.shape[1] == 0: ## when binning in time, can sometimes get locations with zero sampling
+            population_activity[idx, :] = 0
         else:
-            population_activity[idx, :] = np.sum(binned_data, axis=1)
+            if binarized:
+                population_activity[idx, :] = np.sum(binned_data > 0, axis=1)
+            else:
+                population_activity[idx, :] = np.sum(binned_data, axis=1)
     if fps is not None:
         occupancy = occupancy / fps
     return population_activity, occupancy, bins
