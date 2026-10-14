@@ -16,8 +16,9 @@ import place_cells as pc
 project_dir = 'MultiCon_Imaging'
 experiment_dir = 'MultiCon_Imaging6'
 mouse_list = ['mc54', 'mc55', 'mc56', 'mc58', 'mc59', 'mc60'] 
+mouse_list = ['mc58', 'mc59', 'mc60']
 dpath = f'../../../{project_dir}/{experiment_dir}/output/aligned_minian/'
-spath = f'../../../{project_dir}/{experiment_dir}/output/aligned_place_cells/'
+spath = f'../../../{project_dir}/{experiment_dir}/output/place_cells_two/'
 data_type = 'S'
 only_running = True
 correct_dir = True
@@ -112,3 +113,4 @@ for mouse in tqdm(mouse_list):
 
 
             
+# %%

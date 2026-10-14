@@ -17,18 +17,18 @@ project_dir = 'MultiCon_Imaging'
 experiment_dir = 'MultiCon_Imaging6'
 mouse_list = ['mc54', 'mc55', 'mc56', 'mc58', 'mc59', 'mc60']
 dpath = f'../../../{project_dir}/{experiment_dir}/output/aligned_minian/'
-spath = f'../../../{project_dir}/{experiment_dir}/output/aligned_place_cells_entire_session/'
+spath = f'../../../{project_dir}/{experiment_dir}/output/place_cells_min_trials_beginning/'
 data_type = 'S'
-only_running = False
-correct_dir = False
+only_running = True
+correct_dir = True
 smooth = False
 binarized = False
 velocity_thresh = 10
-bin_size = 0.16
+bin_size = 0.06
 nshuffles = 500
 percentile = 95
 min_event_amount = 0.2
-min_trials = None ## lowest number of trials a mouse ran on day 16 is 27 trials, which was a two-context mouse
+min_trials = 32 ## lowest number of trials a mouse ran on day 16 is 32 trials, which was a two-context mouse
 last_min = False
 # %%
 for mouse in tqdm(mouse_list):
