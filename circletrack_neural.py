@@ -515,8 +515,9 @@ def pre_post_diff(pre: np.array, post: np.array, sim: int = None):
 
 
 @dask.delayed
-def one_shuffle_rw_diff(data, sim, correct_size, window_size, reward_one, reward_two):
-    rand_shift = np.random.randint(30, data.shape[1]) ## shifts anywhere from 1s to the entire session
+def one_shuffle_rw_diff(data, sim, correct_size, window_size, reward_one, reward_two, seed=24601):
+    rs = RandomState(MT19937(SeedSequence(seed)))
+    rand_shift = rs.randint(30, data.shape[1] - 30) ## shifts anywhere from 1s to the entire session minus 1 second
     shuff_data = xr.apply_ufunc(
             np.roll,
             data.chunk({'frame': -1, 'unit_id': 50}),
@@ -538,7 +539,9 @@ def one_shuffle_rw_diff(data, sim, correct_size, window_size, reward_one, reward
     return df
 
 
-def compute_shuffled_rw_diff(ar: np.array, correct_size: int, window_size: int, num_simulations: int = 500, verbose: bool = True):
+def compute_shuffled_rw_diff(ar: np.array, correct_size: int, window_size: int, num_simulations: int = 500, verbose: bool = True, init_seed: int = 24601):
+    rs = RandomState(MT19937(SeedSequence(init_seed)))
+    seeds = rs.randint(low=0, high=100000, size=num_simulations)
     delayed_res = [
         one_shuffle_rw_diff(
             data=ar,
@@ -546,7 +549,8 @@ def compute_shuffled_rw_diff(ar: np.array, correct_size: int, window_size: int, 
             window_size=window_size,
             sim=sim,
             reward_one=ar.attrs['reward_one'],
-            reward_two=ar.attrs['reward_two']
+            reward_two=ar.attrs['reward_two'],
+            seed=seeds[sim]
         ) for sim in np.arange(num_simulations)
     ]
 
