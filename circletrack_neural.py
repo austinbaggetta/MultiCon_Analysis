@@ -486,7 +486,7 @@ def reward_activity(act, correct_size, window_size, reward_one, reward_two):
                     
                     avg_response = np.mean(nan_array, axis=0)
                     if nan_array.shape[0] > 1: ## only calculate SEM if greater than 1 reward
-                        sem = np.std(nan_array, axis=0, ddof=1) / data.shape[1]
+                        sem = np.std(nan_array, axis=0, ddof=1) / np.sqrt(data.shape[1])
                     else:
                         sem = np.nan
                 windowed_data[unit, :, reward_idx] = avg_response
