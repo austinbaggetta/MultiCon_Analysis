@@ -5,8 +5,9 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 from tqdm import tqdm
-from os.path import join as pjoin
 from natsort import natsorted
+from os.path import join as pjoin
+from numpy.random import RandomState, MT19937, SeedSequence
 
 sys.path.append('../../')
 import circletrack_neural as ctn
@@ -29,7 +30,8 @@ nshuffles = 500
 percentile = 95
 min_event_amount = 0.2
 min_trials = 32 ## lowest number of trials a mouse ran on day 16 is 32 trials, which was a two-context mouse
-last_min = True
+last_min = False 
+randomize = True 
 # %%
 for mouse in tqdm(mouse_list):
     mpath = pjoin(dpath, f'{mouse}/{data_type}')
@@ -49,17 +51,28 @@ for mouse in tqdm(mouse_list):
 
                 if min_trials is not None:
                     forward, reverse = ctb.get_forward_reverse_trials(sdata)
-                    if last_min:
-                        sub = forward[-min_trials:]
-                        min_data = sdata[:, sdata['trials'] == sub[0]]
-                        for trial in sub[1:]:
+
+                    if randomize:
+                        rs = RandomState(MT19937(SeedSequence(24601)))
+                        randomly_sorted = rs.permutation(int(np.max(forward)))
+                        sub_sorted = np.sort(randomly_sorted[:min_trials + 1])
+
+                        min_data = sdata[:, sdata['trials'] == sub_sorted[0]]
+                        for trial in sub_sorted[1:]:
                             tdata = sdata[:, sdata['trials'] == trial]
                             min_data = xr.concat([min_data, tdata], dim='frame')
                     else:
-                        min_data = sdata[:, sdata['trials'] == forward[0]]
-                        for trial in forward[1:min_trials]:
-                            tdata = sdata[:, sdata['trials'] == trial]
-                            min_data = xr.concat([min_data, tdata], dim='frame')
+                        if last_min:
+                            sub = forward[-min_trials:]
+                            min_data = sdata[:, sdata['trials'] == sub[0]]
+                            for trial in sub[1:]:
+                                tdata = sdata[:, sdata['trials'] == trial]
+                                min_data = xr.concat([min_data, tdata], dim='frame')
+                        else:
+                            min_data = sdata[:, sdata['trials'] == forward[0]]
+                            for trial in forward[1:min_trials]:
+                                tdata = sdata[:, sdata['trials'] == trial]
+                                min_data = xr.concat([min_data, tdata], dim='frame')
                 else:
                     min_data = sdata.copy()
 
