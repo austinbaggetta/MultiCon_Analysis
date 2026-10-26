@@ -130,23 +130,23 @@ def plot_behavior_across_days(data, x_var, y_var, groupby_var=['day'], avg_color
                 subject_color = marker_color
                 legendgroup = marker_color
             fig.add_trace(go.Scatter(x=data_sub[x_var], y=data_sub[y_var], showlegend=False, legendgroup=legendgroup,
-                                    mode=datapoint_type, opacity=0.3, name=subject, line_color=subject_color, line_width=1.5))
+                                    mode=datapoint_type, opacity=0.3, name=subject, line_color=subject_color, line_width=1))
     ## Plot group average or multiple group averages
     if ('group' in groupby_var) | ('group_two' in groupby_var) | ('sex' in groupby_var) | ('maze' in groupby_var) | ('experimenter' in groupby_var):
         for group in np.unique(avg_data[groupby_var[-1]]):
             avg_sub = avg_data.loc[avg_data[groupby_var[-1]] == group]
             sem_sub = sem_data.loc[sem_data[groupby_var[-1]] == group]
             fig.add_trace(go.Scatter(x=avg_sub[x_var], y=avg_sub[y_var],
-                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=9,
-                                     error_y = dict(type='data', array=sem_sub[y_var], thickness=2.5), legendgroup=group, 
+                                     mode='lines+markers', marker_symbol=symbol_dict[group], marker_size=11,
+                                     error_y = dict(type='data', array=sem_sub[y_var], thickness=3.5), legendgroup=group, 
                                      line=dict(color=group_dict[group]), name=group, showlegend=True,
-                                     marker=dict(line=dict(width=1.5)), line_width=2.5))
+                                     marker=dict(line=dict(width=2.5)), line_width=2.5))
     else:
         fig.add_trace(go.Scatter(x=avg_data[x_var], y=avg_data[y_var],
                                 mode='lines+markers', 
-                                error_y=dict(type='data', array=sem_data[y_var], thickness=2.5), marker_size=9,
+                                error_y=dict(type='data', array=sem_data[y_var], thickness=3.5), marker_size=11,
                                 line=dict(color=avg_color), showlegend=False, marker_symbol=symbols,
-                                marker=dict(line=dict(width=1.5)), line_width=2.5))
+                                marker=dict(line=dict(width=2.5)), line_width=2.5))
     ## Add dashed lines   
     if expert_line:
         fig.add_hline(y=75, line_width=3, line_dash='dash', line_color=chance_color, opacity=1, layer='below')
